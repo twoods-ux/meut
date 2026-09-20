@@ -1,0 +1,26 @@
+# Local Postgres for MEUT (Prisma provider = postgresql).
+# Usage:
+#   docker compose up -d
+#   cp .env.example .env   # or set DATABASE_URL as below
+#   npx prisma db push && npm run db:seed
+#   npm run dev
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: meut-postgres
+    environment:
+      POSTGRES_USER: meut
+      POSTGRES_PASSWORD: meut
+      POSTGRES_DB: meut
+    ports:
+      - "5432:5432"
+    volumes:
+      - meut_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U meut -d meut"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  meut_pgdata:

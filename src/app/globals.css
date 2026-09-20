@@ -1,0 +1,171 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f4f7fb;
+  --foreground: #0f172a;
+  --sidebar: #0c1f3d;
+  --sidebar-accent: #163560;
+  --brand: #4070d0;
+  --brand-dark: #1c4587;
+  --brand-mid: #2f56a8;
+  --brand-light: #5b8ae0;
+  --brand-50: #eef3fb;
+  --ring: #4070d0;
+}
+
+body {
+  @apply bg-[var(--background)] text-slate-900 antialiased;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold transition
+      focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2
+      disabled:pointer-events-none disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn text-white shadow-sm;
+    background-image: linear-gradient(135deg, #4070d0 0%, #1c4587 100%);
+  }
+  .btn-primary:hover {
+    filter: brightness(1.05);
+    box-shadow: 0 4px 14px rgba(64, 112, 208, 0.35);
+  }
+  .btn-primary:active {
+    filter: brightness(0.97);
+  }
+  .btn-secondary {
+    @apply btn border border-slate-200 bg-white text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50;
+  }
+  .btn-danger {
+    @apply btn bg-rose-600 text-white shadow-sm hover:bg-rose-700;
+  }
+  .btn-ghost {
+    @apply btn text-slate-600 hover:bg-slate-100 hover:text-slate-900;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm
+      placeholder:text-slate-400 transition
+      focus:outline-none focus:ring-2 focus:ring-brand-500/25 focus:border-brand-500;
+  }
+  .label {
+    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500;
+  }
+
+  .card {
+    @apply rounded-2xl border border-slate-200/80 bg-white p-5 shadow-soft;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold tracking-wide;
+  }
+
+  .table-wrap {
+    @apply overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-soft;
+  }
+  .data-table {
+    @apply min-w-full text-sm;
+  }
+  .data-table thead {
+    @apply border-b border-slate-200 bg-slate-50/90;
+  }
+  .data-table th {
+    @apply px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500;
+  }
+  .data-table td {
+    @apply px-4 py-3 text-slate-700;
+  }
+  .data-table tbody tr {
+    @apply border-b border-slate-100 last:border-0 transition-colors;
+  }
+  .data-table tbody tr:hover td {
+    @apply bg-brand-50/60;
+  }
+
+  .link-brand {
+    @apply font-medium text-brand-600 hover:text-brand-700 hover:underline;
+  }
+
+  .auth-shell {
+    @apply relative flex min-h-screen items-center justify-center overflow-hidden p-4 sm:p-6;
+    background-image: linear-gradient(145deg, #0c1f3d 0%, #163560 45%, #1c4587 70%, #4070d0 100%);
+  }
+  .auth-shell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% 20%, rgba(64, 112, 208, 0.35), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 80%, rgba(28, 69, 135, 0.4), transparent);
+    pointer-events: none;
+  }
+  .auth-card {
+    @apply relative z-10 w-full max-w-md rounded-2xl border border-white/20 bg-white/95 p-8 shadow-lift backdrop-blur-sm;
+  }
+
+  .section-title {
+    @apply text-lg font-semibold tracking-tight text-slate-900;
+  }
+}
+
+/* —— Print / paper layout —— */
+@media print {
+  @page {
+    margin: 0.6in;
+  }
+
+  html,
+  body {
+    background: white !important;
+    color: #0f172a !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-document {
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  a {
+    text-decoration: none !important;
+    color: inherit !important;
+  }
+
+  .data-table thead {
+    background: #f1f5f9 !important;
+  }
+
+  .data-table tbody tr:hover td {
+    background: transparent !important;
+  }
+}
+
+@layer components {
+  .print-document {
+    @apply rounded-2xl border border-slate-200/80 bg-white p-6 shadow-soft print:rounded-none print:border-0 print:p-0 print:shadow-none;
+  }
+
+  .print-section-title {
+    @apply mb-2 mt-5 border-b border-slate-200 pb-1 text-xs font-bold uppercase tracking-wider text-slate-700;
+  }
+
+  .print-grid-2 {
+    @apply grid gap-3 sm:grid-cols-2;
+  }
+
+  .print-grid-3 {
+    @apply grid gap-3 sm:grid-cols-3;
+  }
+
+  .print-sign-line {
+    @apply mt-8 grid gap-6 sm:grid-cols-2;
+  }
+
+  .print-sign-line .line {
+    @apply border-b border-slate-400 pt-8 text-[10px] uppercase tracking-wider text-slate-500;
+  }
+}

@@ -1,0 +1,278 @@
+// MEUT schema — multi-tenant SaaS (Organization = paying customer).
+// Natural keys (HospID, ControlNum, TechID, CostCtr, WO) preserved as business fields,
+// scoped unique per organization.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Paying customer / tenant. License tier + import metadata live here.
+model Organization {
+  id                String    @id @default(cuid())
+  name              String
+  slug              String    @unique
+  /// STARTER | PROFESSIONAL | ENTERPRISE | CREATOR (see src/lib/license.ts)
+  tier              String    @default("STARTER")
+  active            Boolean   @default(true)
+  /// Stripe Customer id (cus_...)
+  stripeCustomerId     String?  @unique
+  /// Stripe Subscription id (sub_...)
+  stripeSubscriptionId String?
+  /// MONTHLY | ANNUAL | null when not billed via Stripe
+  billingInterval      String?
+  /// Purchased seats beyond LICENSE_TIERS[tier].maxSeats
+  extraSeats           Int      @default(0)
+  lastImportAt      DateTime?
+  lastImportSummary String? // JSON ImportMdbCounts
+  /// Customer branding logo as data URL (image/png|jpeg|webp); used on prints
+  logoDataUrl       String?
+  logoUpdatedAt     DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  users         User[]
+  hospitals     Hospital[]
+  departments   Department[]
+  equipment     Equipment[]
+  manufacturers Manufacturer[]
+  vendors       Vendor[]
+  contracts     ServiceContract[]
+  workOrders    WorkOrder[]
+}
+
+/// Maps to tblTechnicians + login (Password/SecurityLevel/IsSupervisor).
+/// CUSTOMER = facility contact portal (read-only, scoped to one hospital).
+model User {
+  id             String   @id @default(cuid())
+  organizationId String
+  techId         String? // TechID — unique within org (staff)
+  username       String   @unique // global for simple login
+  name           String
+  firstName      String?
+  lastName       String?
+  passwordHash   String
+  role           String   @default("TECH") // SUPERVISOR | TECH | CUSTOMER
+  /// Facility scope for CUSTOMER users (one hospital in their org)
+  hospitalId     String?
+  initials       String? // TechInitials
+  securityLevel  Int? // SecurityLevel
+  active         Boolean  @default(true)
+  phone          String?
+  email          String?
+  jobTitle       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  hospital     Hospital?    @relation(fields: [hospitalId], references: [id])
+  assignedWos  WorkOrder[]  @relation("AssignedTech")
+  closedWos    WorkOrder[]  @relation("ClosedByTech")
+  openedWos    WorkOrder[]  @relation("OpenedBy")
+
+  @@unique([organizationId, techId])
+  @@index([organizationId])
+  @@index([hospitalId])
+}
+
+/// tblHospitals
+model Hospital {
+  id             String   @id @default(cuid())
+  organizationId String
+  hospId         String // HospID — unique within org
+  name           String // HospName
+  address        String? // Address1
+  city           String?
+  state          String?
+  zip            String?
+  phone          String?
+  contact        String? // HospContact
+  beds           Int?
+  active         Boolean  @default(true)
+  comments       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departments  Department[]
+  equipment    Equipment[]
+  contracts    ServiceContract[]
+  users        User[]
+
+  @@unique([organizationId, hospId])
+  @@index([organizationId])
+}
+
+/// tblDepartments — PK in Access is (HospID, CostCtr)
+model Department {
+  id             String   @id @default(cuid())
+  organizationId String
+  hospitalId     String
+  hospId         String // HospID (denormalized for import)
+  costCtr        String // CostCtr
+  name           String // Department
+  manager        String? // DeptManager
+  phone          String? // DeptPhone
+  fax            String?
+  email          String?
+  defaultPmMonth String?
+  defaultTech    String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  hospital     Hospital     @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  equipment    Equipment[]
+
+  @@unique([organizationId, hospId, costCtr])
+  @@index([organizationId])
+}
+
+/// tblEQUIPMENT
+model Equipment {
+  id                 String    @id @default(cuid())
+  organizationId     String
+  controlNum         String // ControlNum — unique within org
+  hospId             String? // HospID
+  costCtr            String? // CostCtr
+  serial             String? // Serial
+  manufacturer       String? // AltManufacturer
+  manfNum            String? // ManfNum
+  model              String? // AltModel / ManfModel
+  description        String? // AltDescription
+  deviceNum          String? // DeviceNum
+  building           String?
+  location           String? // Location
+  hospitalId         String?
+  departmentId       String?
+  status             String    @default("ACTIVE") // ACTIVE | RETIRED
+  equipOwner         String?
+  onPm               Boolean   @default(false) // EquipOnPM
+  pmProc1            String? // PmProc1
+  pmSchedule1        String? // PmSchedule1
+  techAssigned1      String? // TechAssigned1
+  purchaseDate       DateTime? // PurchDate
+  purchaseCost       Float? // PurchCost
+  warrantyPartsEnd   DateTime? // WarrantyPartsEndDate
+  warrantyLaborEnd   DateTime? // WarrantyLaborEndDate
+  serviceContractNum String?
+  serviceProvider    String?
+  comments           String? // EquipComments
+  dateRetired        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  hospital     Hospital?    @relation(fields: [hospitalId], references: [id])
+  department   Department?  @relation(fields: [departmentId], references: [id])
+  workOrders   WorkOrder[]
+
+  @@unique([organizationId, controlNum])
+  @@index([organizationId])
+}
+
+/// tblManufacturers (lookup; optional for MVP CRUD)
+model Manufacturer {
+  id             String  @id @default(cuid())
+  organizationId String
+  manfNum        String
+  name           String
+  active         Boolean @default(true)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, manfNum])
+  @@index([organizationId])
+}
+
+/// tblVendors
+model Vendor {
+  id             String  @id @default(cuid())
+  organizationId String
+  vendorId       String
+  name           String
+  phone          String?
+  active         Boolean @default(true)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, vendorId])
+  @@index([organizationId])
+}
+
+/// tblServiceContracts
+model ServiceContract {
+  id              String    @id @default(cuid())
+  organizationId  String
+  contractNum     String // ServiceContractNum — unique within org
+  name            String? // ServiceContractName
+  vendorId        String?
+  vendorName      String?
+  hospitalId      String?
+  hospId          String?
+  customerName    String?
+  startDate       DateTime?
+  expirationDate  DateTime? // EndDate
+  contractCost    Float?
+  coverageSummary String? // EquipmentCoveredSummary
+  notes           String? // ContractNotes
+  active          Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  hospital     Hospital?    @relation(fields: [hospitalId], references: [id])
+
+  @@unique([organizationId, contractNum])
+  @@index([organizationId])
+}
+
+/// Unified CM/PM work orders — primarily from tblWorkPerformed (WO is the Access key)
+model WorkOrder {
+  id               String    @id @default(cuid())
+  organizationId   String
+  woNumber         Int // WO — unique within org
+  type             String // CM | PM
+  status           String    @default("OPEN") // OPEN | CLOSED | CANCELLED
+  equipmentId      String
+  controlNum       String? // denormalized ControlNum
+  hospId           String?
+  costCtr          String?
+  workRequested    String? // WRtext
+  workPerformed    String? // WPtext
+  comments         String?
+  priority         String? // WoPriority
+  laborHours       Float?
+  pmMonth          String? // PMmonth
+  pmYear           Int?
+  pmProc1          String?
+  pmSchedule1      String?
+  dateOpened       DateTime  @default(now())
+  dateClosed       DateTime?
+  openedById       String?
+  assignedTechId   String? // TechAssigned1 -> User
+  assignedTechCode String? // raw TechID from Access
+  closedById       String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  equipment    Equipment    @relation(fields: [equipmentId], references: [id])
+  openedBy     User?        @relation("OpenedBy", fields: [openedById], references: [id])
+  assignedTech User?        @relation("AssignedTech", fields: [assignedTechId], references: [id])
+  closedBy     User?        @relation("ClosedByTech", fields: [closedById], references: [id])
+
+  @@unique([organizationId, woNumber])
+  @@index([organizationId])
+}
+
+/// Per-org counters (id = "wo:<organizationId>")
+model Counter {
+  id    String @id
+  value Int    @default(0)
+}
