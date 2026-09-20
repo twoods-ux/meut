@@ -1,4 +1,5 @@
 import { createEquipment, updateEquipment } from "@/lib/actions";
+import { toDateInputValue } from "@/lib/pm";
 import { redirect } from "next/navigation";
 
 type Hospital = { id: string; name: string; hospId: string };
@@ -17,6 +18,9 @@ type Equip = {
   onPm: boolean;
   pmSchedule1: string | null;
   pmProc1: string | null;
+  techAssigned1?: string | null;
+  pmNextDue?: Date | string | null;
+  pmLastCompleted?: Date | string | null;
   comments: string | null;
   risk: string | null;
 };
@@ -118,7 +122,7 @@ export function EquipmentForm({
       <div className="flex items-end gap-3">
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" name="onPm" defaultChecked={equipment?.onPm} value="true" />
-          On PM Schedule (EquipOnPM)
+          Include in PM program
         </label>
       </div>
       <div>
@@ -129,11 +133,51 @@ export function EquipmentForm({
           <option value="Q">Quarterly</option>
           <option value="S">Semi-Annual</option>
           <option value="A">Annual</option>
+          {equipment?.pmSchedule1 &&
+          !["M", "Q", "S", "A"].includes(equipment.pmSchedule1) ? (
+            <option value={equipment.pmSchedule1}>{equipment.pmSchedule1}</option>
+          ) : null}
         </select>
       </div>
       <div>
-        <label className="label">PM Procedure</label>
-        <input className="input" name="pmProc1" defaultValue={equipment?.pmProc1 || ""} />
+        <label className="label">Next due</label>
+        <input
+          className="input"
+          type="date"
+          name="pmNextDue"
+          defaultValue={toDateInputValue(equipment?.pmNextDue)}
+        />
+      </div>
+      <div>
+        <label className="label">Last completed</label>
+        <input
+          className="input"
+          type="date"
+          name="pmLastCompleted"
+          defaultValue={toDateInputValue(equipment?.pmLastCompleted)}
+        />
+      </div>
+      <div>
+        <label className="label">Default tech code</label>
+        <input
+          className="input"
+          name="techAssigned1"
+          defaultValue={equipment?.techAssigned1 || ""}
+          placeholder="Tech ID"
+        />
+      </div>
+      <div className="md:col-span-2">
+        <label className="label">PM steps (procedure)</label>
+        <textarea
+          className="input"
+          name="pmProc1"
+          rows={4}
+          defaultValue={equipment?.pmProc1 || ""}
+          placeholder={"One step per line, e.g.\n1. Visual inspection\n2. Functional test\n3. Safety check"}
+        />
+        <p className="mt-1 text-[11px] text-slate-400">
+          Each line becomes a step on the PM work order when you generate PMs.
+        </p>
       </div>
       <div className="md:col-span-2">
         <label className="label">Comments</label>

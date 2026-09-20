@@ -8,6 +8,8 @@ import {
   PrintBlock,
 } from "@/components/print-header";
 import { formatDate, formatDateTime } from "@/lib/utils";
+import { buildPmChecklist, normalizePmChecklist } from "@/lib/pm";
+import { PmChecklistPrint } from "@/components/pm-checklist";
 import { resolveRouteParams } from "@/lib/route-params";
 
 export const dynamic = "force-dynamic";
@@ -91,8 +93,8 @@ export default async function PmWorkOrderPrintPage({
             value={wo.pmSchedule1 || wo.equipment.pmSchedule1}
           />
           <PrintField
-            label="PM procedure"
-            value={wo.pmProc1 || wo.equipment.pmProc1}
+            label="Next due"
+            value={formatDate(wo.equipment.pmNextDue)}
           />
         </div>
 
@@ -113,7 +115,23 @@ export default async function PmWorkOrderPrintPage({
 
         <PrintBlock label="Work requested" value={wo.workRequested} />
         <PrintBlock label="Work performed" value={wo.workPerformed} />
-        <PrintBlock label="Comments / checklist notes" value={wo.comments} blankLines={3} />
+
+        {(() => {
+          const steps = normalizePmChecklist(wo.pmChecklist);
+          const items =
+            steps.length > 0
+              ? steps
+              : buildPmChecklist(wo.pmProc1 || wo.equipment.pmProc1);
+          if (items.length === 0) return null;
+          return (
+            <>
+              <h2 className="print-section-title">PM steps</h2>
+              <PmChecklistPrint items={items} />
+            </>
+          );
+        })()}
+
+        <PrintBlock label="Comments" value={wo.comments} blankLines={3} />
 
         <div className="print-sign-line">
           <div className="line">Technician signature / date</div>

@@ -156,10 +156,14 @@ model Equipment {
   /// Equipment risk class/priority (0–4) or High/Medium/Low
   risk               String?
   equipOwner         String?
-  onPm               Boolean   @default(false) // EquipOnPM
+  onPm               Boolean   @default(false) // on preventive maintenance program
   pmProc1            String? // PmProc1
-  pmSchedule1        String? // PmSchedule1
+  pmSchedule1        String? // PmSchedule1 — M|Q|S|A (or free text)
   techAssigned1      String? // TechAssigned1
+  /// Next scheduled PM due date
+  pmNextDue          DateTime?
+  /// Last successful PM completion (Pass close)
+  pmLastCompleted    DateTime?
   purchaseDate       DateTime? // PurchDate
   purchaseCost       Float? // PurchCost
   warrantyPartsEnd   DateTime? // WarrantyPartsEndDate
@@ -178,6 +182,7 @@ model Equipment {
 
   @@unique([organizationId, controlNum])
   @@index([organizationId])
+  @@index([organizationId, pmNextDue])
 }
 
 /// tblManufacturers (lookup; optional for MVP CRUD)
@@ -257,6 +262,8 @@ model WorkOrder {
   pmYear           Int?
   pmProc1          String?
   pmSchedule1      String?
+  /// Seeded from equipment.pmProc1; steps with done/result persisted on WO
+  pmChecklist      Json?
   dateOpened       DateTime  @default(now())
   dateClosed       DateTime?
   openedById       String?

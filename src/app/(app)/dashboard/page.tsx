@@ -3,14 +3,22 @@ import { prisma } from "@/lib/prisma";
 import { PageHeader, StatCard, StatusBadge } from "@/components/ui";
 import { formatDate } from "@/lib/utils";
 import { requireOrgSession } from "@/lib/tenant";
+import { endOfMonth, startOfDay, startOfMonth } from "@/lib/pm";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const { organizationId } = await requireOrgSession();
+  const now = new Date();
+  const monthStart = startOfMonth(now);
+  const monthEnd = endOfMonth(now);
+  const todayStart = startOfDay(now);
+
   const [
     equipActive,
     equipOnPm,
+    pmOverdue,
+    pmDueMonth,
     openCm,
     openPm,
     contractsExpiring,
@@ -19,6 +27,22 @@ export default async function DashboardPage() {
     prisma.equipment.count({ where: { organizationId, status: "ACTIVE" } }),
     prisma.equipment.count({
       where: { organizationId, onPm: true, status: "ACTIVE" },
+    }),
+    prisma.equipment.count({
+      where: {
+        organizationId,
+        onPm: true,
+        status: "ACTIVE",
+        pmNextDue: { lt: todayStart },
+      },
+    }),
+    prisma.equipment.count({
+      where: {
+        organizationId,
+        onPm: true,
+        status: "ACTIVE",
+        pmNextDue: { gte: monthStart, lte: monthEnd },
+      },
     }),
     prisma.workOrder.count({
       where: { organizationId, type: "CM", status: "OPEN" },
@@ -47,11 +71,19 @@ export default async function DashboardPage() {
         title="Dashboard"
         subtitle="Biomedical / clinical equipment maintenance overview"
       />
-      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <StatCard label="Active Equipment" value={equipActive} tone="brand" />
-        <StatCard label="On PM Schedule" value={equipOnPm} tone="emerald" />
-        <StatCard label="Open CM WOs" value={openCm} tone="amber" />
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <StatCard label="Active equipment" value={equipActive} tone="brand" />
+        <StatCard label="In PM program" value={equipOnPm} tone="emerald" />
+        <Link href="/pm-work-orders?due=overdue" className="block">
+          <StatCard label="PM overdue" value={pmOverdue} tone="rose" hint="Open PM list" />
+        </Link>
+        <Link href="/pm-work-orders?due=month" className="block">
+          <StatCard label="Due this month" value={pmDueMonth} tone="amber" hint="Open PM list" />
+        </Link>
+        <StatCard label="Open CM WOs" value={openCm} tone="sky" />
         <StatCard label="Open PM WOs" value={openPm} tone="slate" />
+      </div>
+      <div className="mb-8">
         <StatCard
           label="Contracts ≤90d"
           value={contractsExpiring}
@@ -91,7 +123,7 @@ export default async function DashboardPage() {
                     href={
                       wo.type === "CM"
                         ? `/cm-work-orders/${wo.id}`
-                        : "/pm-work-orders"
+                        : `/pm-work-orders/${wo.id}`
                     }
                     className="link-brand"
                   >

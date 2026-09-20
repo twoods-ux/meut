@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader, StatusBadge } from "@/components/ui";
+import { PmDueBadge } from "@/components/pm-due-badge";
 import { EquipmentForm } from "@/components/equipment-form";
 import { formatDate } from "@/lib/utils";
 import { requireOrgSession } from "@/lib/tenant";
@@ -54,6 +55,12 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
       <div className="mb-4 flex flex-wrap gap-3 text-sm">
         <StatusBadge status={equipment.status} />
         {equipment.onPm ? <span className="badge bg-sky-100 text-sky-800">On PM</span> : null}
+        {equipment.pmNextDue ? (
+          <span className="inline-flex items-center gap-1.5 text-sm text-slate-600">
+            <span className="text-slate-400">Next due</span>
+            <PmDueBadge pmNextDue={equipment.pmNextDue} />
+          </span>
+        ) : null}
         {equipment.risk ? (
           <span className="badge bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-600/15">
             Risk {equipment.risk}
@@ -78,6 +85,9 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
           onPm: equipment.onPm,
           pmSchedule1: equipment.pmSchedule1,
           pmProc1: equipment.pmProc1,
+          techAssigned1: equipment.techAssigned1,
+          pmNextDue: equipment.pmNextDue,
+          pmLastCompleted: equipment.pmLastCompleted,
           comments: equipment.comments,
           risk: equipment.risk,
         }}
@@ -103,7 +113,7 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
               <tr key={wo.id}>
                 <td>
                   <Link
-                    href={wo.type === "CM" ? `/cm-work-orders/${wo.id}` : "/pm-work-orders"}
+                    href={wo.type === "CM" ? `/cm-work-orders/${wo.id}` : `/pm-work-orders/${wo.id}`}
                     className="link-brand"
                   >
                     {wo.woNumber}

@@ -19,6 +19,14 @@ import {
   type EquipmentPrintColumnId,
 } from "./equipment-print-columns";
 import { Prisma } from "@prisma/client";
+import {
+  buildPmChecklist,
+  bumpPmNextDue,
+  checklistFromFormData,
+  normalizePmChecklist,
+  parseDateInput,
+  type PmChecklistItem,
+} from "./pm";
 
 async function nextWoNumber(organizationId: string): Promise<number> {
   const counterId = `wo:${organizationId}`;
@@ -116,11 +124,16 @@ export async function createEquipment(formData: FormData) {
       onPm: formData.get("onPm") === "on" || formData.get("onPm") === "true",
       pmSchedule1: String(formData.get("pmSchedule1") || "") || null,
       pmProc1: String(formData.get("pmProc1") || "") || null,
+      techAssigned1: String(formData.get("techAssigned1") || "").trim() || null,
+      pmNextDue: parseDateInput(String(formData.get("pmNextDue") || "")),
+      pmLastCompleted: parseDateInput(String(formData.get("pmLastCompleted") || "")),
       comments: String(formData.get("comments") || "") || null,
       risk: String(formData.get("risk") || "").trim() || null,
     },
   });
   revalidatePath("/equipment");
+  revalidatePath("/pm-work-orders");
+  revalidatePath("/dashboard");
 }
 
 export async function updateEquipment(id: string, formData: FormData) {
@@ -164,12 +177,17 @@ export async function updateEquipment(id: string, formData: FormData) {
       onPm: formData.get("onPm") === "on" || formData.get("onPm") === "true",
       pmSchedule1: String(formData.get("pmSchedule1") || "") || null,
       pmProc1: String(formData.get("pmProc1") || "") || null,
+      techAssigned1: String(formData.get("techAssigned1") || "").trim() || null,
+      pmNextDue: parseDateInput(String(formData.get("pmNextDue") || "")),
+      pmLastCompleted: parseDateInput(String(formData.get("pmLastCompleted") || "")),
       comments: String(formData.get("comments") || "") || null,
       risk: String(formData.get("risk") || "").trim() || null,
     },
   });
   revalidatePath("/equipment");
   revalidatePath(`/equipment/${id}`);
+  revalidatePath("/pm-work-orders");
+  revalidatePath("/dashboard");
 }
 
 export async function createTechnician(formData: FormData) {
@@ -426,6 +444,7 @@ export async function closeWorkOrder(id: string, formData: FormData) {
   const { organizationId, userId } = await requireStaffSession();
   const existing = await prisma.workOrder.findFirst({
     where: { id, organizationId },
+    include: { equipment: true },
   });
   if (!existing) throw new Error("Work order not found");
   const laborHours = parseFloat(String(formData.get("laborHours") || "0")) || 0;
@@ -433,31 +452,81 @@ export async function closeWorkOrder(id: string, formData: FormData) {
     .trim()
     .toUpperCase();
   let pmResult: string | null = null;
+  let pmChecklist: PmChecklistItem[] | undefined;
   if (existing.type === "PM") {
     if (rawPmResult !== "PASS" && rawPmResult !== "FAIL") {
       throw new Error("Pass or Fail is required when closing a PM work order");
     }
     pmResult = rawPmResult;
+    const current = normalizePmChecklist(existing.pmChecklist);
+    const seeded =
+      current.length > 0
+        ? current
+        : buildPmChecklist(existing.pmProc1 || existing.equipment.pmProc1);
+    pmChecklist = checklistFromFormData(formData, seeded);
   }
+  const dateClosed = new Date();
   await prisma.workOrder.update({
     where: { id },
     data: {
       status: "CLOSED",
-      dateClosed: new Date(),
+      dateClosed,
       laborHours,
       workPerformed: String(formData.get("workPerformed") || "") || null,
       comments: String(formData.get("comments") || "") || null,
       closedById: userId,
       pmResult,
+      ...(pmChecklist ? { pmChecklist } : {}),
     },
   });
+
+  // On Pass: stamp last completed and bump next due (see src/lib/pm.ts).
+  if (existing.type === "PM" && pmResult === "PASS") {
+    const schedule =
+      existing.pmSchedule1 || existing.equipment.pmSchedule1 || null;
+    await prisma.equipment.update({
+      where: { id: existing.equipmentId },
+      data: {
+        pmLastCompleted: dateClosed,
+        pmNextDue: bumpPmNextDue(dateClosed, schedule),
+      },
+    });
+  }
+
   revalidatePath("/cm-work-orders");
   revalidatePath("/pm-work-orders");
   revalidatePath(`/cm-work-orders/${id}`);
+  revalidatePath(`/pm-work-orders/${id}`);
   revalidatePath(`/pm-work-orders/${id}/print`);
+  revalidatePath(`/equipment/${existing.equipmentId}`);
+  revalidatePath("/equipment");
+  revalidatePath("/dashboard");
   revalidatePath("/reports");
   revalidatePath("/quick-close");
   revalidatePath("/quick-entry");
+}
+
+/** Persist PM checklist step results without closing the work order. */
+export async function savePmChecklist(id: string, formData: FormData) {
+  const { organizationId } = await requireStaffSession();
+  const existing = await prisma.workOrder.findFirst({
+    where: { id, organizationId, type: "PM" },
+  });
+  if (!existing) throw new Error("PM work order not found");
+  if (existing.status !== "OPEN") {
+    throw new Error("Checklist can only be edited on open PM work orders");
+  }
+  const current = normalizePmChecklist(existing.pmChecklist);
+  const seeded =
+    current.length > 0 ? current : buildPmChecklist(existing.pmProc1);
+  const pmChecklist = checklistFromFormData(formData, seeded);
+  await prisma.workOrder.update({
+    where: { id },
+    data: { pmChecklist },
+  });
+  revalidatePath(`/pm-work-orders/${id}`);
+  revalidatePath(`/pm-work-orders/${id}/print`);
+  revalidatePath("/pm-work-orders");
 }
 
 export async function generatePmWorkOrders(formData: FormData) {
@@ -526,6 +595,7 @@ export async function generatePmWorkOrders(formData: FormData) {
         pmMonth: month,
         pmProc1: eq.pmProc1,
         pmSchedule1: eq.pmSchedule1,
+        pmChecklist: buildPmChecklist(eq.pmProc1),
         assignedTechCode: eq.techAssigned1,
         assignedTechId,
         openedById: userId,
@@ -534,6 +604,7 @@ export async function generatePmWorkOrders(formData: FormData) {
     created++;
   }
   revalidatePath("/pm-work-orders");
+  revalidatePath("/dashboard");
   return created;
 }
 

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { PageHeader, StatusBadge, EmptyState } from "@/components/ui";
+import { PageHeader, StatusBadge, EmptyState, StatCard } from "@/components/ui";
 import { formatDate } from "@/lib/utils";
 import { generatePmWorkOrders, closeWorkOrder } from "@/lib/actions";
 import { revalidatePath } from "next/cache";
@@ -14,6 +14,12 @@ import {
   workOrderPrintHref,
 } from "@/lib/work-order-filters";
 import { Printer, Search } from "lucide-react";
+import { PmDueBadge } from "@/components/pm-due-badge";
+import {
+  endOfMonth,
+  startOfDay,
+  startOfMonth,
+} from "@/lib/pm";
 
 export const dynamic = "force-dynamic";
 
@@ -37,10 +43,15 @@ export default async function PmPage({
     pmMonth: oneParam(raw.pmMonth),
     page: oneParam(raw.page),
   });
+  const dueFacility = oneParam(raw.dueFacility) || "ALL";
+  const dueView = (oneParam(raw.due) || "overdue").toLowerCase();
 
   const where = buildWorkOrderWhere(organizationId, "PM", filters);
 
-  const now = new Date();
+  const now = new Date(); // shadow later defaultMonth uses now — keep consistent
+  const monthStart = startOfMonth(now);
+  const monthEnd = endOfMonth(now);
+  const todayStart = startOfDay(now);
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
   const [facilities, techs, total, wos, onPmCount] = await Promise.all([
@@ -68,6 +79,54 @@ export default async function PmPage({
     }),
     prisma.equipment.count({
       where: { organizationId, onPm: true, status: "ACTIVE" },
+    }),
+  ]);
+
+  const dueHospital =
+    dueFacility && dueFacility !== "ALL"
+      ? facilities.find((f) => f.id === dueFacility) || null
+      : null;
+  const facilityScope = dueHospital
+    ? {
+        OR: [
+          { hospitalId: dueHospital.id },
+          { hospId: dueHospital.hospId },
+        ],
+      }
+    : {};
+
+  const baseDueEquip = {
+    organizationId,
+    status: "ACTIVE" as const,
+    onPm: true,
+    ...facilityScope,
+  };
+
+  const [overdueCount, dueThisMonthCount, dueList] = await Promise.all([
+    prisma.equipment.count({
+      where: {
+        ...baseDueEquip,
+        pmNextDue: { lt: todayStart },
+      },
+    }),
+    prisma.equipment.count({
+      where: {
+        ...baseDueEquip,
+        pmNextDue: { gte: monthStart, lte: monthEnd },
+      },
+    }),
+    prisma.equipment.findMany({
+      where: {
+        ...baseDueEquip,
+        ...(dueView === "month"
+          ? { pmNextDue: { gte: monthStart, lte: monthEnd } }
+          : dueView === "onpm"
+            ? {}
+            : { pmNextDue: { lt: todayStart } }),
+      },
+      include: { hospital: true, department: true },
+      orderBy: [{ pmNextDue: "asc" }, { controlNum: "asc" }],
+      take: 40,
     }),
   ]);
 
@@ -122,7 +181,107 @@ export default async function PmPage({
         }
       />
 
+      <div className="mb-6 print:hidden">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <h2 className="section-title">Due & overdue PMs</h2>
+          <form className="flex flex-wrap items-end gap-2">
+            <div>
+              <label className="label" htmlFor="dueFacility">
+                Facility
+              </label>
+              <select
+                className="input"
+                id="dueFacility"
+                name="dueFacility"
+                defaultValue={dueFacility}
+              >
+                <option value="ALL">All facilities</option>
+                {facilities.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name} ({f.hospId})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="due">
+                Show
+              </label>
+              <select className="input" id="due" name="due" defaultValue={dueView}>
+                <option value="overdue">Overdue</option>
+                <option value="month">Due this month</option>
+                <option value="onpm">All on PM</option>
+              </select>
+            </div>
+            <button type="submit" className="btn-secondary text-xs">
+              Filter
+            </button>
+            <Link href="/quick-close" className="btn-ghost text-xs">
+              Quick Close
+            </Link>
+          </form>
+        </div>
+        <div className="mb-4 grid gap-4 sm:grid-cols-3">
+          <StatCard label="Overdue" value={overdueCount} tone="rose" hint="Past next due date" />
+          <StatCard
+            label="Due this month"
+            value={dueThisMonthCount}
+            tone="amber"
+            hint={defaultMonth}
+          />
+          <StatCard label="On PM" value={onPmCount} tone="emerald" hint="Active equipment" />
+        </div>
+        {dueList.length === 0 ? (
+          <p className="text-sm text-slate-500">
+            Nothing in this view for the selected facility.
+          </p>
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Control #</th>
+                  <th>Facility</th>
+                  <th>Description</th>
+                  <th>Schedule</th>
+                  <th>Next due</th>
+                  <th className="print:hidden">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {dueList.map((e) => (
+                  <tr key={e.id}>
+                    <td>
+                      <Link href={`/equipment/${e.id}`} className="link-brand">
+                        {e.controlNum}
+                      </Link>
+                    </td>
+                    <td>{e.hospital?.name || e.hospId || "—"}</td>
+                    <td className="max-w-[220px] truncate">
+                      {e.description || "—"}
+                    </td>
+                    <td>{e.pmSchedule1 || "—"}</td>
+                    <td>
+                      <PmDueBadge pmNextDue={e.pmNextDue} compact />
+                    </td>
+                    <td className="print:hidden">
+                      <Link
+                        href={`#generate-pm`}
+                        className="link-brand text-xs"
+                      >
+                        Generate PM
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       <form
+        id="generate-pm"
         action={generateAction}
         className="card mb-6 flex flex-wrap items-end gap-3 print:hidden"
       >
@@ -144,7 +303,7 @@ export default async function PmPage({
             className="input"
             id="generateFacility"
             name="facility"
-            defaultValue="ALL"
+            defaultValue={dueFacility !== "ALL" ? dueFacility : "ALL"}
           >
             <option value="ALL">All facilities</option>
             {facilities.map((f) => (
@@ -392,7 +551,11 @@ export default async function PmPage({
             <tbody className="divide-y divide-slate-100">
               {rows.map((wo) => (
                 <tr key={wo.id}>
-                  <td className="font-medium">{wo.woNumber}</td>
+                  <td className="font-medium">
+                    <Link href={`/pm-work-orders/${wo.id}`} className="link-brand">
+                      {wo.woNumber}
+                    </Link>
+                  </td>
                   <td>{wo.pmMonth || "—"}</td>
                   <td>
                     <Link
