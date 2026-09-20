@@ -27,7 +27,7 @@ export default async function NewCmPage({
 
   async function action(formData: FormData) {
     "use server";
-    const id = await openCmWorkOrder(formData);
+    const { id } = await openCmWorkOrder(formData);
     redirect(`/cm-work-orders/${id}`);
   }
 

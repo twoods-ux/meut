@@ -16,6 +16,8 @@ import {
   BarChart3,
   Settings,
   LogOut,
+  Zap,
+  CircleCheck,
 } from "lucide-react";
 
 const nav = [
@@ -24,6 +26,8 @@ const nav = [
   { href: "/facilities", label: "Facilities", icon: Building2 },
   { href: "/contracts", label: "Contracts", icon: FileText },
   { href: "/technicians", label: "Technicians", icon: Users },
+  { href: "/quick-entry", label: "Quick Entry", icon: Zap },
+  { href: "/quick-close", label: "Quick Close", icon: CircleCheck },
   { href: "/cm-work-orders", label: "CM Work Orders", icon: ClipboardList },
   { href: "/pm-work-orders", label: "PM Work Orders", icon: CalendarCheck },
   { href: "/reports", label: "Reports", icon: BarChart3 },

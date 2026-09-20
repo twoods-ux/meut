@@ -278,10 +278,24 @@ export async function updateTechnician(id: string, formData: FormData) {
 
 export async function openCmWorkOrder(formData: FormData) {
   const { organizationId, userId } = await requireStaffSession();
-  const equipmentId = String(formData.get("equipmentId") || "");
+  let equipmentId = String(formData.get("equipmentId") || "").trim();
+  const controlNumRaw = String(formData.get("controlNum") || "").trim();
+  if (!equipmentId && controlNumRaw) {
+    const byControl = await prisma.equipment.findFirst({
+      where: {
+        organizationId,
+        controlNum: { equals: controlNumRaw, mode: "insensitive" },
+      },
+    });
+    if (!byControl) throw new Error(`Equipment not found for Control # ${controlNumRaw}`);
+    equipmentId = byControl.id;
+  }
+  if (!equipmentId) throw new Error("Equipment or Control # is required");
   const eq = await prisma.equipment.findFirstOrThrow({
     where: { id: equipmentId, organizationId },
   });
+  const workRequested = String(formData.get("workRequested") || "").trim();
+  if (!workRequested) throw new Error("Problem / description is required");
   const woNumber = await nextWoNumber(organizationId);
   const assignedTechId = String(formData.get("assignedTechId") || "") || null;
   if (assignedTechId) {
@@ -300,14 +314,78 @@ export async function openCmWorkOrder(formData: FormData) {
       controlNum: eq.controlNum,
       hospId: eq.hospId,
       costCtr: eq.costCtr,
-      workRequested: String(formData.get("workRequested") || "") || null,
+      workRequested,
       priority: String(formData.get("priority") || "ROUTINE") || "ROUTINE",
       openedById: userId,
       assignedTechId,
     },
   });
   revalidatePath("/cm-work-orders");
-  return wo.id;
+  revalidatePath("/quick-entry");
+  return { id: wo.id, woNumber: wo.woNumber, controlNum: eq.controlNum };
+}
+
+/** Typeahead / lookup equipment by Control # within the current org. */
+export async function lookupEquipmentByControlNum(query: string) {
+  const { organizationId } = await requireStaffSession();
+  const q = String(query || "").trim();
+  if (!q) return [];
+  const matches = await prisma.equipment.findMany({
+    where: {
+      organizationId,
+      status: "ACTIVE",
+      controlNum: { contains: q, mode: "insensitive" },
+    },
+    select: {
+      id: true,
+      controlNum: true,
+      description: true,
+      manufacturer: true,
+      model: true,
+      location: true,
+      hospId: true,
+    },
+    orderBy: { controlNum: "asc" },
+    take: 20,
+  });
+  return matches;
+}
+
+/** Find OPEN CM/PM work orders by WO # and/or Control # (org-scoped). */
+export async function findOpenWorkOrders(opts: {
+  woNumber?: string;
+  controlNum?: string;
+}) {
+  const { organizationId } = await requireStaffSession();
+  const woRaw = String(opts.woNumber || "").trim();
+  const controlRaw = String(opts.controlNum || "").trim();
+  if (!woRaw && !controlRaw) {
+    throw new Error("Enter a WO # and/or Control #");
+  }
+  const where: Prisma.WorkOrderWhereInput = {
+    organizationId,
+    status: "OPEN",
+  };
+  if (woRaw) {
+    const n = parseInt(woRaw, 10);
+    if (Number.isNaN(n)) throw new Error("WO # must be a number");
+    where.woNumber = n;
+  }
+  if (controlRaw) {
+    where.OR = [
+      { controlNum: { equals: controlRaw, mode: "insensitive" } },
+      { equipment: { controlNum: { equals: controlRaw, mode: "insensitive" } } },
+    ];
+  }
+  return prisma.workOrder.findMany({
+    where,
+    include: {
+      equipment: { select: { id: true, controlNum: true, description: true, model: true } },
+      assignedTech: { select: { id: true, name: true, techId: true } },
+    },
+    orderBy: { woNumber: "desc" },
+    take: 50,
+  });
 }
 
 export async function closeWorkOrder(id: string, formData: FormData) {
@@ -344,6 +422,8 @@ export async function closeWorkOrder(id: string, formData: FormData) {
   revalidatePath(`/cm-work-orders/${id}`);
   revalidatePath(`/pm-work-orders/${id}/print`);
   revalidatePath("/reports");
+  revalidatePath("/quick-close");
+  revalidatePath("/quick-entry");
 }
 
 export async function generatePmWorkOrders(formData: FormData) {
