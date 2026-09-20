@@ -1,2 +1,10 @@
 [variables]
 NIXPACKS_NODE_VERSION = "20"
+
+# Override default `npm ci` — Railway mounts a cache at node_modules/.cache,
+# so ci/rm against that path hits EBUSY.
+[phases.install]
+cmds = ["npm install --no-audit --no-fund"]
+
+[phases.build]
+cmds = ["npx prisma generate", "npm run build"]

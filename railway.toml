@@ -1,6 +1,8 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "rm -rf node_modules && npm install --no-audit --no-fund && npx prisma generate && npm run build"
+# Install phase (nixpacks.toml) already ran npm install — do not rm node_modules
+# (EBUSY on Railway's node_modules/.cache mount).
+buildCommand = "npx prisma generate && npm run build"
 
 [deploy]
 startCommand = "sh scripts/boot.sh"
