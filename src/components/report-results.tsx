@@ -102,6 +102,12 @@ function filterSummary(
   if (filters.type === "pm" && filters.pmResult && filters.pmResult !== "ALL") {
     parts.push(pmResultLabel(filters.pmResult));
   }
+  if (filters.type === "pm" && filters.pmMonth) {
+    parts.push(`PM ${filters.pmMonth}`);
+  }
+  if (filters.q) {
+    parts.push(`Look-up “${filters.q}”`);
+  }
   return parts.join(" · ");
 }
 

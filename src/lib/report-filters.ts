@@ -1,5 +1,10 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import {
+  WORK_ORDER_PRINT_TAKE,
+  buildWorkOrderWhere,
+  type ParsedWorkOrderFilters,
+} from "@/lib/work-order-filters";
 
 export type ReportType = "cm" | "pm" | "equipment" | "contracts";
 
@@ -11,6 +16,8 @@ export type ReportFilterParams = {
   to?: string;
   tech?: string;
   pmResult?: string; // ALL | PASS | FAIL — PM reports only
+  pmMonth?: string; // YYYY-MM — PM reports only
+  q?: string; // look-up text
 };
 
 export type ParsedReportFilters = {
@@ -21,6 +28,8 @@ export type ParsedReportFilters = {
   to: string | null;
   techId: string | null;
   pmResult: string; // ALL | PASS | FAIL — meaningful for type pm
+  pmMonth: string | null; // YYYY-MM — meaningful for type pm
+  q: string;
 };
 
 const REPORT_TYPES: ReportType[] = ["cm", "pm", "equipment", "contracts"];
@@ -62,18 +71,23 @@ export function parseReportFilters(
     pmResult = "ALL";
   }
 
-  return { type, facilityId, status, from, to, techId, pmResult };
-}
+  const pmMonthRaw = (params.pmMonth || "").trim();
+  const pmMonth =
+    type === "pm" && /^\d{4}-\d{2}$/.test(pmMonthRaw) ? pmMonthRaw : null;
 
-/** End-exclusive next day for inclusive YYYY-MM-DD "to" dates. */
-function endOfDayExclusive(isoDate: string): Date {
-  const d = new Date(`${isoDate}T00:00:00.000`);
-  d.setDate(d.getDate() + 1);
-  return d;
-}
+  const q = (params.q || "").trim();
 
-function startOfDay(isoDate: string): Date {
-  return new Date(`${isoDate}T00:00:00.000`);
+  return {
+    type,
+    facilityId,
+    status,
+    from,
+    to,
+    techId,
+    pmResult,
+    pmMonth,
+    q,
+  };
 }
 
 export function buildPrintHref(filters: ParsedReportFilters): string | null {
@@ -84,8 +98,12 @@ export function buildPrintHref(filters: ParsedReportFilters): string | null {
   if (filters.techId) q.set("tech", filters.techId);
   if (filters.from) q.set("from", filters.from);
   if (filters.to) q.set("to", filters.to);
+  if (filters.q) q.set("q", filters.q);
   if (filters.type === "pm" && filters.pmResult && filters.pmResult !== "ALL") {
     q.set("pmResult", filters.pmResult);
+  }
+  if (filters.type === "pm" && filters.pmMonth) {
+    q.set("pmMonth", filters.pmMonth);
   }
   const path =
     filters.type === "cm"
@@ -129,36 +147,28 @@ export function pmResultLabel(pmResult: string): string {
   return "All results";
 }
 
-function workOrderWhere(
-  organizationId: string,
-  woType: "CM" | "PM",
+function toWorkOrderListFilters(
   filters: ParsedReportFilters
-): Prisma.WorkOrderWhereInput {
-  const where: Prisma.WorkOrderWhereInput = {
-    organizationId,
-    type: woType,
+): ParsedWorkOrderFilters {
+  const status =
+    filters.status === "CLOSED" || filters.status === "ALL"
+      ? filters.status
+      : "OPEN";
+  const pmResult =
+    filters.pmResult === "PASS" || filters.pmResult === "FAIL"
+      ? filters.pmResult
+      : "ALL";
+  return {
+    q: filters.q || "",
+    status,
+    facilityId: filters.facilityId,
+    from: filters.from,
+    to: filters.to,
+    techId: filters.techId,
+    pmResult,
+    pmMonth: filters.pmMonth,
+    page: 1,
   };
-
-  if (filters.status === "OPEN") where.status = "OPEN";
-  else if (filters.status === "CLOSED") where.status = "CLOSED";
-
-  if (woType === "PM" && (filters.pmResult === "PASS" || filters.pmResult === "FAIL")) {
-    where.pmResult = filters.pmResult;
-  }
-
-  if (filters.techId) where.assignedTechId = filters.techId;
-
-  if (filters.from || filters.to) {
-    where.dateOpened = {};
-    if (filters.from) where.dateOpened.gte = startOfDay(filters.from);
-    if (filters.to) where.dateOpened.lt = endOfDayExclusive(filters.to);
-  }
-
-  if (filters.facilityId) {
-    where.equipment = { hospitalId: filters.facilityId };
-  }
-
-  return where;
 }
 
 function equipmentWhere(
@@ -191,7 +201,11 @@ export async function fetchReportData(
   if (filters.type === "cm" || filters.type === "pm") {
     const woType = filters.type === "cm" ? "CM" : "PM";
     const rows = await prisma.workOrder.findMany({
-      where: workOrderWhere(organizationId, woType, filters),
+      where: buildWorkOrderWhere(
+        organizationId,
+        woType,
+        toWorkOrderListFilters(filters)
+      ),
       include: {
         equipment: { include: { hospital: true } },
         assignedTech: true,
@@ -200,7 +214,7 @@ export async function fetchReportData(
         woType === "PM"
           ? [{ pmMonth: "desc" }, { woNumber: "desc" }]
           : { dateOpened: "desc" },
-      take: 500,
+      take: WORK_ORDER_PRINT_TAKE,
     });
     return { kind: filters.type as "cm" | "pm", rows };
   }

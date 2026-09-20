@@ -8,16 +8,32 @@ import {
   statusLabelFor,
   type ReportFilterParams,
 } from "@/lib/report-filters";
+import { resolveSearchParams, oneParam } from "@/lib/route-params";
 
 export const dynamic = "force-dynamic";
 
 export default async function CmListPrintPage({
   searchParams,
 }: {
-  searchParams: ReportFilterParams;
+  searchParams:
+    | ReportFilterParams
+    | Promise<ReportFilterParams>
+    | Record<string, string | string[] | undefined>
+    | Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { organizationId, organizationName } = await requireOrgSession();
-  const filters = parseReportFilters({ ...searchParams, type: "cm" });
+  const raw = await resolveSearchParams(
+    searchParams as Record<string, string | string[] | undefined> | Promise<Record<string, string | string[] | undefined>>
+  );
+  const filters = parseReportFilters({
+    type: "cm",
+    status: oneParam(raw.status),
+    facility: oneParam(raw.facility),
+    from: oneParam(raw.from),
+    to: oneParam(raw.to),
+    tech: oneParam(raw.tech),
+    q: oneParam(raw.q),
+  });
   const orgBrand = await prisma.organization.findUnique({
     where: { id: organizationId },
     select: { logoDataUrl: true },
@@ -48,19 +64,20 @@ export default async function CmListPrintPage({
     filters.from || filters.to
       ? ` · ${filters.from || "…"} → ${filters.to || "…"}`
       : "";
+  const searchPart = filters.q ? ` · Look-up “${filters.q}”` : "";
 
   const org = organizationName || "Organization";
   const statusLabel = statusLabelFor("cm", filters.status);
 
   return (
     <div>
-      <PrintToolbar backHref="/reports" backLabel="Back to Reports" />
+      <PrintToolbar backHref="/cm-work-orders" backLabel="Back to CM list" />
       <article className="print-document">
         <PrintHeader
           organizationName={org}
           logoSrc={printLogoSrc}
           title="CM Work Orders"
-          subtitle={`${statusLabel} · ${facilityLabel} · ${techLabel}${datePart} · ${wos.length} record(s)`}
+          subtitle={`${statusLabel} · ${facilityLabel} · ${techLabel}${datePart}${searchPart} · ${wos.length} record(s)`}
         />
         <div className="overflow-x-auto">
           <table className="data-table text-xs">

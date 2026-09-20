@@ -9,16 +9,34 @@ import {
   statusLabelFor,
   type ReportFilterParams,
 } from "@/lib/report-filters";
+import { resolveSearchParams, oneParam } from "@/lib/route-params";
 
 export const dynamic = "force-dynamic";
 
 export default async function PmListPrintPage({
   searchParams,
 }: {
-  searchParams: ReportFilterParams;
+  searchParams:
+    | ReportFilterParams
+    | Promise<ReportFilterParams>
+    | Record<string, string | string[] | undefined>
+    | Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { organizationId, organizationName } = await requireOrgSession();
-  const filters = parseReportFilters({ ...searchParams, type: "pm" });
+  const raw = await resolveSearchParams(
+    searchParams as Record<string, string | string[] | undefined> | Promise<Record<string, string | string[] | undefined>>
+  );
+  const filters = parseReportFilters({
+    type: "pm",
+    status: oneParam(raw.status),
+    facility: oneParam(raw.facility),
+    from: oneParam(raw.from),
+    to: oneParam(raw.to),
+    tech: oneParam(raw.tech),
+    pmResult: oneParam(raw.pmResult),
+    pmMonth: oneParam(raw.pmMonth),
+    q: oneParam(raw.q),
+  });
   const orgBrand = await prisma.organization.findUnique({
     where: { id: organizationId },
     select: { logoDataUrl: true },
@@ -53,19 +71,21 @@ export default async function PmListPrintPage({
     filters.pmResult && filters.pmResult !== "ALL"
       ? ` · ${pmResultLabel(filters.pmResult)}`
       : "";
+  const monthPart = filters.pmMonth ? ` · PM ${filters.pmMonth}` : "";
+  const searchPart = filters.q ? ` · Look-up “${filters.q}”` : "";
 
   const org = organizationName || "Organization";
   const statusLabel = statusLabelFor("pm", filters.status);
 
   return (
     <div>
-      <PrintToolbar backHref="/reports" backLabel="Back to Reports" />
+      <PrintToolbar backHref="/pm-work-orders" backLabel="Back to PM list" />
       <article className="print-document">
         <PrintHeader
           organizationName={org}
           logoSrc={printLogoSrc}
           title="PM Work Orders"
-          subtitle={`${statusLabel} · ${facilityLabel} · ${techLabel}${datePart}${resultPart} · ${wos.length} record(s)`}
+          subtitle={`${statusLabel} · ${facilityLabel} · ${techLabel}${datePart}${resultPart}${monthPart}${searchPart} · ${wos.length} record(s)`}
         />
         <div className="overflow-x-auto">
           <table className="data-table text-xs">
