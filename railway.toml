@@ -1,6 +1,6 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "rm -rf node_modules/.cache && npm ci --no-audit --no-fund && npx prisma generate && npm run build"
+buildCommand = "rm -rf node_modules && npm install --no-audit --no-fund && npx prisma generate && npm run build"
 
 [deploy]
 startCommand = "sh scripts/boot.sh"
