@@ -9,8 +9,16 @@ export const dynamic = "force-dynamic";
 export default async function NewEquipmentPage() {
   const { organizationId } = await requireOrgSession();
   const [hospitals, departments] = await Promise.all([
-    prisma.hospital.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
-    prisma.department.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
+    prisma.hospital.findMany({
+      where: { organizationId },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, hospId: true },
+    }),
+    prisma.department.findMany({
+      where: { organizationId },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, costCtr: true, hospitalId: true },
+    }),
   ]);
   return (
     <div>

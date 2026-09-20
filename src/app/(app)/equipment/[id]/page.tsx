@@ -22,8 +22,16 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
   });
   if (!equipment) notFound();
   const [hospitals, departments] = await Promise.all([
-    prisma.hospital.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
-    prisma.department.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
+    prisma.hospital.findMany({
+      where: { organizationId },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, hospId: true },
+    }),
+    prisma.department.findMany({
+      where: { organizationId },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, costCtr: true, hospitalId: true },
+    }),
   ]);
 
   return (
@@ -50,7 +58,26 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
           {equipment.hospital?.name} · {equipment.department?.name || equipment.costCtr || "—"}
         </span>
       </div>
-      <EquipmentForm equipment={equipment} hospitals={hospitals} departments={departments} />
+      <EquipmentForm
+        equipment={{
+          id: equipment.id,
+          controlNum: equipment.controlNum,
+          serial: equipment.serial,
+          manufacturer: equipment.manufacturer,
+          model: equipment.model,
+          description: equipment.description,
+          location: equipment.location,
+          hospitalId: equipment.hospitalId,
+          departmentId: equipment.departmentId,
+          status: equipment.status,
+          onPm: equipment.onPm,
+          pmSchedule1: equipment.pmSchedule1,
+          pmProc1: equipment.pmProc1,
+          comments: equipment.comments,
+        }}
+        hospitals={hospitals}
+        departments={departments}
+      />
 
       <h2 className="mb-3 mt-8 text-lg font-semibold">Maintenance History</h2>
       <div className="table-wrap">

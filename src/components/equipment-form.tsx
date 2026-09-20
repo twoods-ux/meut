@@ -29,11 +29,16 @@ export function EquipmentForm({
   hospitals: Hospital[];
   departments: Dept[];
 }) {
+  // Close over a plain string only — Next.js serializes server-action closures.
+  // Capturing the full Prisma `equipment` (or `equipment` when undefined) crashes
+  // /equipment/new with: Cannot read properties of undefined (reading 'id').
+  const equipmentId = equipment?.id;
+
   async function action(formData: FormData) {
     "use server";
-    if (equipment?.id) {
-      await updateEquipment(equipment.id, formData);
-      redirect(`/equipment/${equipment.id}`);
+    if (equipmentId) {
+      await updateEquipment(equipmentId, formData);
+      redirect(`/equipment/${equipmentId}`);
     } else {
       await createEquipment(formData);
       redirect("/equipment");
