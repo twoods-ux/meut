@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import type { LicenseTier } from "@/lib/license";
 import type { BillingInterval } from "@/lib/billing";
 import {
   BILLING_PRICES_USD,
