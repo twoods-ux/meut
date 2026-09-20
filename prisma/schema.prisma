@@ -153,7 +153,7 @@ model Equipment {
   hospitalId         String?
   departmentId       String?
   status             String    @default("ACTIVE") // ACTIVE | RETIRED
-  /// MediMizer Class Risk Priority (0–4) or High/Medium/Low
+  /// Equipment risk class/priority (0–4) or High/Medium/Low
   risk               String?
   equipOwner         String?
   onPm               Boolean   @default(false) // EquipOnPM
