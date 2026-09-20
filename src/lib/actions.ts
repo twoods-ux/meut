@@ -13,6 +13,12 @@ import { isLicenseTier, type LicenseTier } from "./license";
 import { requireStaffSession, slugifyOrgName } from "./tenant";
 import { claimCheckoutSessionForOrg } from "./billing-sync";
 import { isBillingInterval } from "./billing";
+import {
+  mergeEquipmentPrintPrefs,
+  sanitizeEquipmentPrintColumns,
+  type EquipmentPrintColumnId,
+} from "./equipment-print-columns";
+import { Prisma } from "@prisma/client";
 
 async function nextWoNumber(organizationId: string): Promise<number> {
   const counterId = `wo:${organizationId}`;
@@ -111,6 +117,7 @@ export async function createEquipment(formData: FormData) {
       pmSchedule1: String(formData.get("pmSchedule1") || "") || null,
       pmProc1: String(formData.get("pmProc1") || "") || null,
       comments: String(formData.get("comments") || "") || null,
+      risk: String(formData.get("risk") || "").trim() || null,
     },
   });
   revalidatePath("/equipment");
@@ -158,6 +165,7 @@ export async function updateEquipment(id: string, formData: FormData) {
       pmSchedule1: String(formData.get("pmSchedule1") || "") || null,
       pmProc1: String(formData.get("pmProc1") || "") || null,
       comments: String(formData.get("comments") || "") || null,
+      risk: String(formData.get("risk") || "").trim() || null,
     },
   });
   revalidatePath("/equipment");
@@ -527,4 +535,24 @@ export async function signupOrganization(formData: FormData): Promise<
       error: e instanceof Error ? e.message : "Signup failed",
     };
   }
+}
+
+export async function saveEquipmentPrintPrefs(
+  columns: EquipmentPrintColumnId[]
+) {
+  const { userId } = await requireStaffSession();
+  const sanitized = sanitizeEquipmentPrintColumns(columns);
+  if (!sanitized) throw new Error("Select at least one print column");
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { printPrefs: true },
+  });
+  if (!user) throw new Error("User not found");
+  const next = mergeEquipmentPrintPrefs(user.printPrefs, sanitized);
+  await prisma.user.update({
+    where: { id: userId },
+    data: { printPrefs: next as Prisma.InputJsonValue },
+  });
+  revalidatePath("/equipment");
+  revalidatePath("/reports/print/equipment");
 }

@@ -10,6 +10,8 @@ import {
   equipmentPrintHref,
   parseEquipmentFilters,
 } from "@/lib/equipment-filters";
+import { equipmentColumnsFromPrefs } from "@/lib/equipment-print-columns";
+import { EquipmentPrintColumns } from "@/components/equipment-print-columns";
 import { Printer, Search } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +23,12 @@ export default async function EquipmentPage({
     | Record<string, string | string[] | undefined>
     | Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { organizationId } = await requireOrgSession();
+  const { organizationId, userId } = await requireOrgSession();
+  const userPrefs = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { printPrefs: true },
+  });
+  const printColumns = equipmentColumnsFromPrefs(userPrefs?.printPrefs);
   const raw = await resolveSearchParams(searchParams);
   const filters = parseEquipmentFilters({
     q: oneParam(raw.q),
@@ -109,6 +116,7 @@ export default async function EquipmentPage({
         subtitle="Inventory of biomedical / clinical devices — filter, then print what you see"
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <EquipmentPrintColumns initialColumns={printColumns} />
             <a
               href={printHref}
               target="_blank"
@@ -231,7 +239,7 @@ export default async function EquipmentPage({
           </a>
           <p className="text-xs text-slate-400 sm:ml-2">
             Print opens a printable view of the current filters (full matching
-            list, not only this page)
+            list, not only this page). Use Print columns (above) to choose fields.
           </p>
         </div>
       </form>
@@ -304,6 +312,7 @@ export default async function EquipmentPage({
                 <th>Location</th>
                 <th>Dept</th>
                 <th>PM</th>
+                <th>Risk</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -340,6 +349,7 @@ export default async function EquipmentPage({
                       "—"
                     )}
                   </td>
+                  <td>{e.risk || "—"}</td>
                   <td>
                     <StatusBadge status={e.status} />
                   </td>

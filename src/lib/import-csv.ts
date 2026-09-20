@@ -251,6 +251,7 @@ export async function importEquipmentCsv(
         onPm: ["1", "true", "yes", "y"].includes(
           pick(row, "on_pm", "pm").toLowerCase()
         ),
+        risk: pick(row, "risk", "class_risk", "class_risk_priority", "risk_class") || null,
       },
       update: {
         hospId,
@@ -263,6 +264,7 @@ export async function importEquipmentCsv(
         building: pick(row, "building") || null,
         costCtr: pick(row, "cost_ctr", "cost_center", "department") || null,
         status,
+        risk: pick(row, "risk", "class_risk", "class_risk_priority", "risk_class") || null,
       },
     });
     equipment++;

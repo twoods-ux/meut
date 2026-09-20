@@ -9,6 +9,11 @@ import {
   onPmLabel,
   parseEquipmentFilters,
 } from "@/lib/equipment-filters";
+import {
+  columnLabel,
+  equipmentPrintCellValue,
+  resolveEquipmentPrintColumns,
+} from "@/lib/equipment-print-columns";
 import { statusLabelFor } from "@/lib/report-filters";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +25,7 @@ export default async function EquipmentInventoryPrintPage({
     | Record<string, string | string[] | undefined>
     | Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { organizationId, organizationName } = await requireOrgSession();
+  const { organizationId, organizationName, userId } = await requireOrgSession();
   const raw = await resolveSearchParams(searchParams);
   const filters = parseEquipmentFilters({
     q: oneParam(raw.q),
@@ -30,12 +35,23 @@ export default async function EquipmentInventoryPrintPage({
     onPm: oneParam(raw.onPm),
   });
   const fromEquipment = oneParam(raw.from) === "equipment";
+  const colsParam = oneParam(raw.cols);
 
-  const orgBrand = await prisma.organization.findUnique({
-    where: { id: organizationId },
-    select: { logoDataUrl: true },
-  });
+  const [orgBrand, userPrefs] = await Promise.all([
+    prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { logoDataUrl: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { printPrefs: true },
+    }),
+  ]);
   const printLogoSrc = orgBrand?.logoDataUrl ? "/api/org/logo" : null;
+  const columns = resolveEquipmentPrintColumns({
+    printPrefs: userPrefs?.printPrefs,
+    colsParam,
+  });
 
   const where = buildEquipmentWhere(organizationId, filters);
   const [equipment, facilityRow, deptRow] = await Promise.all([
@@ -103,36 +119,30 @@ export default async function EquipmentInventoryPrintPage({
           <table className="data-table text-xs">
             <thead>
               <tr>
-                <th>Control #</th>
-                <th>Description</th>
-                <th>Manufacturer</th>
-                <th>Model</th>
-                <th>Serial</th>
-                <th>Facility</th>
-                <th>Department</th>
-                <th>Location</th>
-                <th>On PM</th>
-                <th>Status</th>
+                {columns.map((col) => (
+                  <th key={col}>{columnLabel(col)}</th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {equipment.map((e) => (
                 <tr key={e.id}>
-                  <td className="font-medium">{e.controlNum}</td>
-                  <td>{e.description || "—"}</td>
-                  <td>{e.manufacturer || "—"}</td>
-                  <td>{e.model || "—"}</td>
-                  <td>{e.serial || "—"}</td>
-                  <td>{e.hospital?.name || e.hospId || "—"}</td>
-                  <td>{e.department?.name || e.costCtr || "—"}</td>
-                  <td>{e.location || "—"}</td>
-                  <td>{e.onPm ? "Yes" : "No"}</td>
-                  <td>{e.status}</td>
+                  {columns.map((col) => (
+                    <td
+                      key={col}
+                      className={col === "controlNum" ? "font-medium" : undefined}
+                    >
+                      {equipmentPrintCellValue(col, e)}
+                    </td>
+                  ))}
                 </tr>
               ))}
               {equipment.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="py-6 text-center text-slate-400">
+                  <td
+                    colSpan={Math.max(columns.length, 1)}
+                    className="py-6 text-center text-slate-400"
+                  >
                     No equipment
                   </td>
                 </tr>

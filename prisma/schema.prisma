@@ -62,6 +62,8 @@ model User {
   initials       String? // TechInitials
   securityLevel  Int? // SecurityLevel
   active         Boolean  @default(true)
+  /// Per-user UI prefs (e.g. equipment print columns) — JSON object
+  printPrefs     Json?
   phone          String?
   email          String?
   jobTitle       String?
@@ -151,6 +153,8 @@ model Equipment {
   hospitalId         String?
   departmentId       String?
   status             String    @default("ACTIVE") // ACTIVE | RETIRED
+  /// MediMizer Class Risk Priority (0–4) or High/Medium/Low
+  risk               String?
   equipOwner         String?
   onPm               Boolean   @default(false) // EquipOnPM
   pmProc1            String? // PmProc1

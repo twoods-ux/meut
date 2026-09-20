@@ -1,3 +1,3 @@
-control_num,hosp_id,facility_name,description,manufacturer,model,serial,location,status,on_pm
-EQ-001,DEMO,Demo General Hospital,Defibrillator,Zoll,R Series,SN12345,ED Bay 2,ACTIVE,yes
-EQ-002,DEMO,Demo General Hospital,Infusion Pump,Baxter,Sigma Spectrum,SN67890,ICU 3,ACTIVE,no
+control_num,hosp_id,facility_name,description,manufacturer,model,serial,location,status,on_pm,risk
+EQ-001,DEMO,Demo General Hospital,Defibrillator,Zoll,R Series,SN12345,ED Bay 2,ACTIVE,yes,3
+EQ-002,DEMO,Demo General Hospital,Infusion Pump,Baxter,Sigma Spectrum,SN67890,ICU 3,ACTIVE,no,2

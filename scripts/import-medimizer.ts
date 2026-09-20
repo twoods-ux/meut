@@ -278,6 +278,7 @@ async function main() {
       status: e.status === "RETIRED" ? "RETIRED" : "ACTIVE",
       onPm: String(e.on_pm).toLowerCase() === "true",
       pmSchedule1: e.pm_schedule1 || null,
+      risk: e.risk ? String(e.risk).trim() : null,
     };
     const eq = await prisma.equipment.upsert({
       where: {

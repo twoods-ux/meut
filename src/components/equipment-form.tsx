@@ -18,6 +18,7 @@ type Equip = {
   pmSchedule1: string | null;
   pmProc1: string | null;
   comments: string | null;
+  risk: string | null;
 };
 
 export function EquipmentForm({
@@ -76,6 +77,24 @@ export function EquipmentForm({
         <select className="input" name="status" defaultValue={equipment?.status || "ACTIVE"}>
           <option value="ACTIVE">Active</option>
           <option value="RETIRED">Retired</option>
+        </select>
+      </div>
+      <div>
+        <label className="label">Risk</label>
+        <select className="input" name="risk" defaultValue={equipment?.risk || ""}>
+          <option value="">—</option>
+          <option value="0">0</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="Low">Low</option>
+          <option value="Medium">Medium</option>
+          <option value="High">High</option>
+          {equipment?.risk &&
+          !["0", "1", "2", "3", "4", "Low", "Medium", "High"].includes(equipment.risk) ? (
+            <option value={equipment.risk}>{equipment.risk}</option>
+          ) : null}
         </select>
       </div>
       <div>

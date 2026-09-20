@@ -54,6 +54,11 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
       <div className="mb-4 flex flex-wrap gap-3 text-sm">
         <StatusBadge status={equipment.status} />
         {equipment.onPm ? <span className="badge bg-sky-100 text-sky-800">On PM</span> : null}
+        {equipment.risk ? (
+          <span className="badge bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-600/15">
+            Risk {equipment.risk}
+          </span>
+        ) : null}
         <span className="text-slate-500">
           {equipment.hospital?.name} · {equipment.department?.name || equipment.costCtr || "—"}
         </span>
@@ -74,6 +79,7 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
           pmSchedule1: equipment.pmSchedule1,
           pmProc1: equipment.pmProc1,
           comments: equipment.comments,
+          risk: equipment.risk,
         }}
         hospitals={hospitals}
         departments={departments}
