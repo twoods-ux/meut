@@ -9,6 +9,7 @@ export const metadata: Metadata = {
   title: "M.E.U.T. — Medical Equipment User Tracking",
   description: "Medical Equipment User Tracking — biomedical / clinical equipment CMMS",
   icons: { icon: "/meut-logo.png" },
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

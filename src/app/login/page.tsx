@@ -4,6 +4,7 @@ import Image from "next/image";
 import { signIn } from "next-auth/react";
 import { FormEvent, Suspense, useState } from "react";
 import Link from "next/link";
+import { SiteFooter } from "@/components/site-footer";
 import { useRouter, useSearchParams } from "next/navigation";
 
 function safeNextPath(raw: string | null): string {
@@ -40,8 +41,9 @@ function LoginForm() {
   }
 
   return (
-    <div className="auth-shell">
-      <div className="auth-card">
+    <div className="auth-shell !flex-col !justify-between gap-6">
+      <div className="flex w-full flex-1 items-center justify-center">
+        <div className="auth-card">
         <div className="mb-1 flex justify-center">
           <Image
             src="/meut-logo.png"
@@ -148,7 +150,9 @@ function LoginForm() {
             support@meut.app
           </a>
         </p>
+        </div>
       </div>
+      <SiteFooter variant="dark" />
     </div>
   );
 }

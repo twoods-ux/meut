@@ -11,6 +11,7 @@ import {
   formatUsd,
   type BillingInterval,
 } from "@/lib/billing";
+import { SiteFooter } from "@/components/site-footer";
 
 function SignupForm() {
   const router = useRouter();
@@ -70,7 +71,8 @@ function SignupForm() {
   }
 
   return (
-    <div className="auth-shell">
+    <div className="auth-shell !flex-col !justify-between gap-6">
+      <div className="flex w-full flex-1 items-center justify-center py-4">
       <div className="auth-card">
         <div className="mb-1 flex justify-center">
           <Image
@@ -222,6 +224,8 @@ function SignupForm() {
           </a>
         </p>
       </div>
+      </div>
+      <SiteFooter variant="dark" />
     </div>
   );
 }

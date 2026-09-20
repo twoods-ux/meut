@@ -1,0 +1,3 @@
+# MEUT — marketing pages may be indexed. Authenticated app routes require login.
+User-agent: *
+Allow: /

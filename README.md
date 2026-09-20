@@ -144,4 +144,7 @@ MEUT is sold by **facility (hospital) capacity** and **active user seats** **per
 
 ## License
 
-Internal / as provided by the project owner.
+**Proprietary — All Rights Reserved.** See [`LICENSE`](./LICENSE).
+
+MEUT software and branding are owned by Travis Woods / MEUT. Not open source.
+Unauthorized copying or redistribution is prohibited. Hosted SaaS use requires a valid subscription or written agreement.

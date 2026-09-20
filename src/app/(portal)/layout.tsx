@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireCustomerSession } from "@/lib/tenant";
 import { CustomerSidebar } from "@/components/customer-sidebar";
+import { SiteFooter } from "@/components/site-footer";
 
 export default async function PortalLayout({
   children,
@@ -45,6 +46,7 @@ export default async function PortalLayout({
         <div className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
           {children}
         </div>
+        <SiteFooter />
       </main>
     </div>
   );
