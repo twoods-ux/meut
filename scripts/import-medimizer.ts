@@ -185,7 +185,7 @@ async function main() {
     return dept.id;
   }
 
-  for (const h of hospitalByHospId.values()) {
+  for (const h of Array.from(hospitalByHospId.values())) {
     await ensureDept(h.hospId, "GENERAL", "GENERAL");
   }
 
