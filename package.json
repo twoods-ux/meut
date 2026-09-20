@@ -46,5 +46,8 @@
   "description": "M.E.U.T. \u2014 Medical Equipment User Tracking (modern CMMS)",
   "prisma": {
     "seed": "tsx prisma/seed.ts"
+  },
+  "engines": {
+    "node": ">=20 <23"
   }
 }
