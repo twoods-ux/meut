@@ -2,38 +2,55 @@ import { prisma } from "@/lib/prisma";
 import { requireOrgSession } from "@/lib/tenant";
 import { PrintHeader, PrintToolbar } from "@/components/print-header";
 import { formatDate } from "@/lib/utils";
+import {
+  fetchReportData,
+  parseReportFilters,
+  statusLabelFor,
+  type ReportFilterParams,
+} from "@/lib/report-filters";
 
 export const dynamic = "force-dynamic";
 
 export default async function PmListPrintPage({
   searchParams,
 }: {
-  searchParams: { status?: string };
+  searchParams: ReportFilterParams;
 }) {
   const { organizationId, organizationName } = await requireOrgSession();
+  const filters = parseReportFilters({ ...searchParams, type: "pm" });
   const orgBrand = await prisma.organization.findUnique({
     where: { id: organizationId },
     select: { logoDataUrl: true },
   });
   const printLogoSrc = orgBrand?.logoDataUrl ? "/api/org/logo" : null;
-  const status = searchParams.status || "OPEN";
-  const where: { organizationId: string; type: string; status?: string } = {
-    organizationId,
-    type: "PM",
-  };
-  if (status === "OPEN") where.status = "OPEN";
-  else if (status === "CLOSED") where.status = "CLOSED";
 
-  const wos = await prisma.workOrder.findMany({
-    where,
-    include: { equipment: true, assignedTech: true },
-    orderBy: [{ pmMonth: "desc" }, { woNumber: "desc" }],
-    take: 500,
-  });
+  const data = await fetchReportData(organizationId, filters);
+  const wos = data?.kind === "pm" ? data.rows : [];
+
+  let facilityLabel = "All facilities";
+  if (filters.facilityId) {
+    const fac = await prisma.hospital.findFirst({
+      where: { id: filters.facilityId, organizationId },
+      select: { name: true },
+    });
+    if (fac) facilityLabel = fac.name;
+  }
+  let techLabel = "All technicians";
+  if (filters.techId) {
+    const tech = await prisma.user.findFirst({
+      where: { id: filters.techId, organizationId },
+      select: { name: true },
+    });
+    if (tech) techLabel = tech.name;
+  }
+
+  const datePart =
+    filters.from || filters.to
+      ? ` · ${filters.from || "…"} → ${filters.to || "…"}`
+      : "";
 
   const org = organizationName || "Organization";
-  const statusLabel =
-    status === "ALL" ? "All" : status === "CLOSED" ? "Closed" : "Open";
+  const statusLabel = statusLabelFor("pm", filters.status);
 
   return (
     <div>
@@ -43,7 +60,7 @@ export default async function PmListPrintPage({
           organizationName={org}
           logoSrc={printLogoSrc}
           title="PM Work Orders"
-          subtitle={`${statusLabel} · ${wos.length} record(s)`}
+          subtitle={`${statusLabel} · ${facilityLabel} · ${techLabel}${datePart} · ${wos.length} record(s)`}
         />
         <div className="overflow-x-auto">
           <table className="data-table text-xs">
@@ -52,6 +69,7 @@ export default async function PmListPrintPage({
                 <th>WO</th>
                 <th>PM month</th>
                 <th>Control #</th>
+                <th>Facility</th>
                 <th>Schedule</th>
                 <th>Status</th>
                 <th>Tech</th>
@@ -65,6 +83,7 @@ export default async function PmListPrintPage({
                   <td className="font-medium">{wo.woNumber}</td>
                   <td>{wo.pmMonth || "—"}</td>
                   <td>{wo.controlNum || wo.equipment.controlNum}</td>
+                  <td>{wo.equipment.hospital?.name || "—"}</td>
                   <td>{wo.pmSchedule1 || wo.equipment.pmSchedule1 || "—"}</td>
                   <td>{wo.status}</td>
                   <td>{wo.assignedTech?.name || wo.assignedTechCode || "—"}</td>
@@ -74,7 +93,7 @@ export default async function PmListPrintPage({
               ))}
               {wos.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-6 text-center text-slate-400">
+                  <td colSpan={9} className="py-6 text-center text-slate-400">
                     No PM work orders
                   </td>
                 </tr>

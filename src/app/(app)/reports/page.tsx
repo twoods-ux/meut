@@ -2,6 +2,14 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { PageHeader, StatCard } from "@/components/ui";
 import { requireOrgSession } from "@/lib/tenant";
+import { ReportGeneratorForm } from "@/components/report-generator-form";
+import { ReportResults } from "@/components/report-results";
+import {
+  fetchReportData,
+  loadReportFormOptions,
+  parseReportFilters,
+  type ReportFilterParams,
+} from "@/lib/report-filters";
 import {
   ClipboardList,
   CalendarCheck,
@@ -13,29 +21,29 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const printLinks = [
+const shortcutLinks = [
   {
-    href: "/reports/print/cm?status=OPEN",
-    title: "CM work orders (open)",
-    description: "Printable list of open corrective maintenance work orders",
+    href: "/reports?type=cm&status=OPEN",
+    title: "Open CM work orders",
+    description: "Quick start — open corrective maintenance",
     icon: ClipboardList,
   },
   {
-    href: "/reports/print/pm?status=OPEN",
-    title: "PM work orders (open)",
-    description: "Printable list of open preventive maintenance work orders",
+    href: "/reports?type=pm&status=OPEN",
+    title: "Open PM work orders",
+    description: "Quick start — open preventive maintenance",
     icon: CalendarCheck,
   },
   {
-    href: "/reports/print/equipment?status=ACTIVE",
-    title: "Equipment inventory",
-    description: "Printable inventory of active devices",
+    href: "/reports?type=equipment&status=ACTIVE",
+    title: "Active equipment",
+    description: "Quick start — active device inventory",
     icon: Wrench,
   },
   {
-    href: "/reports/print/contracts",
-    title: "Contracts & warranties",
-    description: "Service contract and warranty expiration print view",
+    href: "/reports?type=contracts&status=ACTIVE",
+    title: "Active contracts",
+    description: "Quick start — contracts & warranties",
     icon: FileText,
   },
   {
@@ -46,8 +54,14 @@ const printLinks = [
   },
 ];
 
-export default async function ReportsPage() {
+export default async function ReportsPage({
+  searchParams,
+}: {
+  searchParams: ReportFilterParams;
+}) {
   const { organizationId } = await requireOrgSession();
+  const filters = parseReportFilters(searchParams);
+
   const [
     byDept,
     openCm,
@@ -57,6 +71,8 @@ export default async function ReportsPage() {
     retiredEq,
     onPm,
     contracts,
+    formOptions,
+    reportData,
   ] = await Promise.all([
     prisma.department.findMany({
       where: { organizationId },
@@ -78,14 +94,31 @@ export default async function ReportsPage() {
       where: { organizationId, onPm: true, status: "ACTIVE" },
     }),
     prisma.serviceContract.count({ where: { organizationId, active: true } }),
+    loadReportFormOptions(organizationId),
+    filters.type
+      ? fetchReportData(organizationId, filters)
+      : Promise.resolve(null),
   ]);
+
+  let facilityName: string | null = null;
+  let techName: string | null = null;
+  if (filters.facilityId) {
+    facilityName =
+      formOptions.facilities.find((f) => f.id === filters.facilityId)?.name ||
+      null;
+  }
+  if (filters.techId) {
+    techName =
+      formOptions.techs.find((t) => t.id === filters.techId)?.name || null;
+  }
 
   return (
     <div>
       <PageHeader
         title="Reports"
-        subtitle="Summary metrics and printable list views"
+        subtitle="Choose what to print, set filters, then generate or print that exact selection"
       />
+
       <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Active Equipment" value={activeEq} tone="sky" />
         <StatCard label="Retired" value={retiredEq} tone="slate" />
@@ -96,9 +129,36 @@ export default async function ReportsPage() {
         <StatCard label="Closed CM" value={closedCm} tone="emerald" />
       </div>
 
-      <h2 className="mb-3 text-lg font-semibold">Printable reports</h2>
+      <ReportGeneratorForm
+        facilities={formOptions.facilities}
+        techs={formOptions.techs}
+        defaults={{
+          type: searchParams.type,
+          facility: searchParams.facility,
+          status: searchParams.status,
+          from: searchParams.from,
+          to: searchParams.to,
+          tech: searchParams.tech,
+        }}
+      />
+
+      {reportData && filters.type ? (
+        <ReportResults
+          filters={filters}
+          data={reportData}
+          facilityName={facilityName}
+          techName={techName}
+        />
+      ) : null}
+
+      <div className="mt-10 mb-3">
+        <h2 className="text-lg font-semibold">Shortcuts</h2>
+        <p className="mt-0.5 text-sm text-slate-500">
+          Optional quick starts — same chooser workflow, pre-filled filters
+        </p>
+      </div>
       <div className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {printLinks.map((item) => {
+        {shortcutLinks.map((item) => {
           const Icon = item.icon;
           return (
             <Link
@@ -126,17 +186,17 @@ export default async function ReportsPage() {
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Equipment Count by Department</h2>
         <Link
-          href="/reports/print/equipment?status=ACTIVE"
+          href="/reports?type=equipment&status=ACTIVE"
           className="btn-secondary text-xs"
         >
-          Print inventory
+          Open inventory report
         </Link>
       </div>
       <div className="table-wrap">
         <table className="data-table">
           <thead>
             <tr>
-              <th>Hospital</th>
+              <th>Facility</th>
               <th>Cost Ctr</th>
               <th>Department</th>
               <th>Equipment</th>
@@ -161,10 +221,6 @@ export default async function ReportsPage() {
           </tbody>
         </table>
       </div>
-      <p className="mt-4 text-xs text-slate-400">
-        Excel export and activity-by-tech / downtime reports planned for a later
-        release.
-      </p>
     </div>
   );
 }

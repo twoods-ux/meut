@@ -1,35 +1,42 @@
 import { prisma } from "@/lib/prisma";
 import { requireOrgSession } from "@/lib/tenant";
 import { PrintHeader, PrintToolbar } from "@/components/print-header";
+import {
+  fetchReportData,
+  parseReportFilters,
+  statusLabelFor,
+  type ReportFilterParams,
+} from "@/lib/report-filters";
 
 export const dynamic = "force-dynamic";
 
 export default async function EquipmentInventoryPrintPage({
   searchParams,
 }: {
-  searchParams: { status?: string };
+  searchParams: ReportFilterParams;
 }) {
   const { organizationId, organizationName } = await requireOrgSession();
+  const filters = parseReportFilters({ ...searchParams, type: "equipment" });
   const orgBrand = await prisma.organization.findUnique({
     where: { id: organizationId },
     select: { logoDataUrl: true },
   });
   const printLogoSrc = orgBrand?.logoDataUrl ? "/api/org/logo" : null;
-  const status = searchParams.status || "ACTIVE";
-  const where: { organizationId: string; status?: string } = { organizationId };
-  if (status === "ACTIVE") where.status = "ACTIVE";
-  else if (status === "RETIRED") where.status = "RETIRED";
 
-  const equipment = await prisma.equipment.findMany({
-    where,
-    include: { hospital: true, department: true },
-    orderBy: { controlNum: "asc" },
-    take: 1000,
-  });
+  const data = await fetchReportData(organizationId, filters);
+  const equipment = data?.kind === "equipment" ? data.rows : [];
+
+  let facilityLabel = "All facilities";
+  if (filters.facilityId) {
+    const fac = await prisma.hospital.findFirst({
+      where: { id: filters.facilityId, organizationId },
+      select: { name: true },
+    });
+    if (fac) facilityLabel = fac.name;
+  }
 
   const org = organizationName || "Organization";
-  const statusLabel =
-    status === "ALL" ? "All" : status === "RETIRED" ? "Retired" : "Active";
+  const statusLabel = statusLabelFor("equipment", filters.status);
 
   return (
     <div>
@@ -39,7 +46,7 @@ export default async function EquipmentInventoryPrintPage({
           organizationName={org}
           logoSrc={printLogoSrc}
           title="Equipment Inventory"
-          subtitle={`${statusLabel} · ${equipment.length} device(s)`}
+          subtitle={`${statusLabel} · ${facilityLabel} · ${equipment.length} device(s)`}
         />
         <div className="overflow-x-auto">
           <table className="data-table text-xs">

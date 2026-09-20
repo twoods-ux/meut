@@ -2,11 +2,22 @@ import { prisma } from "@/lib/prisma";
 import { requireOrgSession } from "@/lib/tenant";
 import { PrintHeader, PrintToolbar } from "@/components/print-header";
 import { formatDate } from "@/lib/utils";
+import {
+  fetchReportData,
+  parseReportFilters,
+  statusLabelFor,
+  type ReportFilterParams,
+} from "@/lib/report-filters";
 
 export const dynamic = "force-dynamic";
 
-export default async function ContractsWarrantyPrintPage() {
+export default async function ContractsWarrantyPrintPage({
+  searchParams,
+}: {
+  searchParams: ReportFilterParams;
+}) {
   const { organizationId, organizationName } = await requireOrgSession();
+  const filters = parseReportFilters({ ...searchParams, type: "contracts" });
   const orgBrand = await prisma.organization.findUnique({
     where: { id: organizationId },
     select: { logoDataUrl: true },
@@ -14,27 +25,21 @@ export default async function ContractsWarrantyPrintPage() {
   const printLogoSrc = orgBrand?.logoDataUrl ? "/api/org/logo" : null;
   const now = new Date();
 
-  const [contracts, warranties] = await Promise.all([
-    prisma.serviceContract.findMany({
-      where: { organizationId },
-      include: { hospital: true },
-      orderBy: { expirationDate: "asc" },
-    }),
-    prisma.equipment.findMany({
-      where: {
-        organizationId,
-        OR: [
-          { warrantyPartsEnd: { not: null } },
-          { warrantyLaborEnd: { not: null } },
-        ],
-      },
-      include: { hospital: true },
-      orderBy: { warrantyPartsEnd: "asc" },
-      take: 500,
-    }),
-  ]);
+  const data = await fetchReportData(organizationId, filters);
+  const contracts = data?.kind === "contracts" ? data.contracts : [];
+  const warranties = data?.kind === "contracts" ? data.warranties : [];
+
+  let facilityLabel = "All facilities";
+  if (filters.facilityId) {
+    const fac = await prisma.hospital.findFirst({
+      where: { id: filters.facilityId, organizationId },
+      select: { name: true },
+    });
+    if (fac) facilityLabel = fac.name;
+  }
 
   const org = organizationName || "Organization";
+  const statusLabel = statusLabelFor("contracts", filters.status);
 
   return (
     <div>
@@ -44,7 +49,7 @@ export default async function ContractsWarrantyPrintPage() {
           organizationName={org}
           logoSrc={printLogoSrc}
           title="Contracts & Warranty Expirations"
-          subtitle={`${contracts.length} contract(s) · ${warranties.length} warranty record(s)`}
+          subtitle={`${statusLabel} · ${facilityLabel} · ${contracts.length} contract(s) · ${warranties.length} warranty record(s)`}
         />
 
         <h2 className="print-section-title">Service contracts</h2>
@@ -55,7 +60,7 @@ export default async function ContractsWarrantyPrintPage() {
                 <th>Contract #</th>
                 <th>Name</th>
                 <th>Vendor</th>
-                <th>Hospital</th>
+                <th>Facility</th>
                 <th>Expires</th>
                 <th>Cost</th>
                 <th>Status</th>
@@ -68,7 +73,8 @@ export default async function ContractsWarrantyPrintPage() {
                   c.expirationDate &&
                   c.expirationDate >= now &&
                   c.expirationDate.getTime() - now.getTime() < 90 * 86400000;
-                const label = !c.active || expired ? "EXPIRED" : soon ? "SOON" : "ACTIVE";
+                const label =
+                  !c.active || expired ? "EXPIRED" : soon ? "SOON" : "ACTIVE";
                 return (
                   <tr key={c.id}>
                     <td className="font-medium">{c.contractNum}</td>
@@ -103,7 +109,7 @@ export default async function ContractsWarrantyPrintPage() {
               <tr>
                 <th>Control #</th>
                 <th>Description</th>
-                <th>Hospital</th>
+                <th>Facility</th>
                 <th>Parts warranty end</th>
                 <th>Labor warranty end</th>
               </tr>

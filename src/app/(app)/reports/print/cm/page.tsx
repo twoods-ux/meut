@@ -2,38 +2,55 @@ import { prisma } from "@/lib/prisma";
 import { requireOrgSession } from "@/lib/tenant";
 import { PrintHeader, PrintToolbar } from "@/components/print-header";
 import { formatDate } from "@/lib/utils";
+import {
+  fetchReportData,
+  parseReportFilters,
+  statusLabelFor,
+  type ReportFilterParams,
+} from "@/lib/report-filters";
 
 export const dynamic = "force-dynamic";
 
 export default async function CmListPrintPage({
   searchParams,
 }: {
-  searchParams: { status?: string };
+  searchParams: ReportFilterParams;
 }) {
   const { organizationId, organizationName } = await requireOrgSession();
+  const filters = parseReportFilters({ ...searchParams, type: "cm" });
   const orgBrand = await prisma.organization.findUnique({
     where: { id: organizationId },
     select: { logoDataUrl: true },
   });
   const printLogoSrc = orgBrand?.logoDataUrl ? "/api/org/logo" : null;
-  const status = searchParams.status || "OPEN";
-  const where: { organizationId: string; type: string; status?: string } = {
-    organizationId,
-    type: "CM",
-  };
-  if (status === "OPEN") where.status = "OPEN";
-  else if (status === "CLOSED") where.status = "CLOSED";
 
-  const wos = await prisma.workOrder.findMany({
-    where,
-    include: { equipment: true, assignedTech: true },
-    orderBy: { dateOpened: "desc" },
-    take: 500,
-  });
+  const data = await fetchReportData(organizationId, filters);
+  const wos = data?.kind === "cm" ? data.rows : [];
+
+  let facilityLabel = "All facilities";
+  if (filters.facilityId) {
+    const fac = await prisma.hospital.findFirst({
+      where: { id: filters.facilityId, organizationId },
+      select: { name: true },
+    });
+    if (fac) facilityLabel = fac.name;
+  }
+  let techLabel = "All technicians";
+  if (filters.techId) {
+    const tech = await prisma.user.findFirst({
+      where: { id: filters.techId, organizationId },
+      select: { name: true },
+    });
+    if (tech) techLabel = tech.name;
+  }
+
+  const datePart =
+    filters.from || filters.to
+      ? ` · ${filters.from || "…"} → ${filters.to || "…"}`
+      : "";
 
   const org = organizationName || "Organization";
-  const statusLabel =
-    status === "ALL" ? "All" : status === "CLOSED" ? "Closed" : "Open";
+  const statusLabel = statusLabelFor("cm", filters.status);
 
   return (
     <div>
@@ -43,7 +60,7 @@ export default async function CmListPrintPage({
           organizationName={org}
           logoSrc={printLogoSrc}
           title="CM Work Orders"
-          subtitle={`${statusLabel} · ${wos.length} record(s)`}
+          subtitle={`${statusLabel} · ${facilityLabel} · ${techLabel}${datePart} · ${wos.length} record(s)`}
         />
         <div className="overflow-x-auto">
           <table className="data-table text-xs">
@@ -51,6 +68,7 @@ export default async function CmListPrintPage({
               <tr>
                 <th>WO</th>
                 <th>Control #</th>
+                <th>Facility</th>
                 <th>Priority</th>
                 <th>Status</th>
                 <th>Opened</th>
@@ -63,6 +81,7 @@ export default async function CmListPrintPage({
                 <tr key={wo.id}>
                   <td className="font-medium">{wo.woNumber}</td>
                   <td>{wo.controlNum || wo.equipment.controlNum}</td>
+                  <td>{wo.equipment.hospital?.name || "—"}</td>
                   <td>{wo.priority || "—"}</td>
                   <td>{wo.status}</td>
                   <td>{formatDate(wo.dateOpened)}</td>
@@ -72,7 +91,7 @@ export default async function CmListPrintPage({
               ))}
               {wos.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-6 text-center text-slate-400">
+                  <td colSpan={8} className="py-6 text-center text-slate-400">
                     No CM work orders
                   </td>
                 </tr>
