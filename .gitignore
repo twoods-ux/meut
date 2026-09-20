@@ -48,3 +48,4 @@ next-env.d.ts
 *.db-journal
 .creator-password.local
 .next
+.env.bak*
