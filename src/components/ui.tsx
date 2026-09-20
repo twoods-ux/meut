@@ -71,11 +71,11 @@ export function StatCard({
 export function StatusBadge({ status }: { status: string }) {
   const s = status.toUpperCase();
   const cls =
-    s === "OPEN" || s === "ACTIVE"
+    s === "OPEN" || s === "ACTIVE" || s === "PASS"
       ? "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/15"
       : s === "CLOSED"
         ? "bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-500/10"
-        : s === "RETIRED" || s === "CANCELLED"
+        : s === "RETIRED" || s === "CANCELLED" || s === "FAIL"
           ? "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-600/15"
           : s === "CUSTOMER"
             ? "bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-600/15"

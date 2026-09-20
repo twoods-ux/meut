@@ -55,6 +55,19 @@ export default async function PmWorkOrderPrintPage({
           <PrintField label="WO #" value={wo.woNumber} />
           <PrintField label="Status" value={wo.status} />
           <PrintField label="PM month" value={wo.pmMonth} />
+          <PrintField
+            label="Result"
+            value={
+              wo.pmResult === "PASS"
+                ? "Pass"
+                : wo.pmResult === "FAIL"
+                  ? "Fail"
+                  : wo.status === "CLOSED"
+                    ? "—"
+                    : null
+            }
+          />
+          <PrintField label="Date closed" value={formatDate(wo.dateClosed)} />
         </div>
 
         <h2 className="print-section-title">Equipment</h2>

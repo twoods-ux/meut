@@ -139,6 +139,7 @@ export default async function ReportsPage({
           from: searchParams.from,
           to: searchParams.to,
           tech: searchParams.tech,
+          pmResult: searchParams.pmResult,
         }}
       />
 

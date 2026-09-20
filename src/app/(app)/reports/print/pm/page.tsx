@@ -5,6 +5,7 @@ import { formatDate } from "@/lib/utils";
 import {
   fetchReportData,
   parseReportFilters,
+  pmResultLabel,
   statusLabelFor,
   type ReportFilterParams,
 } from "@/lib/report-filters";
@@ -48,6 +49,10 @@ export default async function PmListPrintPage({
     filters.from || filters.to
       ? ` · ${filters.from || "…"} → ${filters.to || "…"}`
       : "";
+  const resultPart =
+    filters.pmResult && filters.pmResult !== "ALL"
+      ? ` · ${pmResultLabel(filters.pmResult)}`
+      : "";
 
   const org = organizationName || "Organization";
   const statusLabel = statusLabelFor("pm", filters.status);
@@ -60,7 +65,7 @@ export default async function PmListPrintPage({
           organizationName={org}
           logoSrc={printLogoSrc}
           title="PM Work Orders"
-          subtitle={`${statusLabel} · ${facilityLabel} · ${techLabel}${datePart} · ${wos.length} record(s)`}
+          subtitle={`${statusLabel} · ${facilityLabel} · ${techLabel}${datePart}${resultPart} · ${wos.length} record(s)`}
         />
         <div className="overflow-x-auto">
           <table className="data-table text-xs">
@@ -72,6 +77,8 @@ export default async function PmListPrintPage({
                 <th>Facility</th>
                 <th>Schedule</th>
                 <th>Status</th>
+                <th>Result</th>
+                <th>Date closed</th>
                 <th>Tech</th>
                 <th>Opened</th>
                 <th>Labor</th>
@@ -86,6 +93,14 @@ export default async function PmListPrintPage({
                   <td>{wo.equipment.hospital?.name || "—"}</td>
                   <td>{wo.pmSchedule1 || wo.equipment.pmSchedule1 || "—"}</td>
                   <td>{wo.status}</td>
+                  <td>
+                    {wo.pmResult === "PASS"
+                      ? "Pass"
+                      : wo.pmResult === "FAIL"
+                        ? "Fail"
+                        : "—"}
+                  </td>
+                  <td>{wo.dateClosed ? formatDate(wo.dateClosed) : "—"}</td>
                   <td>{wo.assignedTech?.name || wo.assignedTechCode || "—"}</td>
                   <td>{formatDate(wo.dateOpened)}</td>
                   <td>{wo.laborHours != null ? `${wo.laborHours}h` : "—"}</td>
@@ -93,7 +108,7 @@ export default async function PmListPrintPage({
               ))}
               {wos.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-6 text-center text-slate-400">
+                  <td colSpan={11} className="py-6 text-center text-slate-400">
                     No PM work orders
                   </td>
                 </tr>

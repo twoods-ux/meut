@@ -10,6 +10,7 @@ export type ReportFilterParams = {
   from?: string;
   to?: string;
   tech?: string;
+  pmResult?: string; // ALL | PASS | FAIL — PM reports only
 };
 
 export type ParsedReportFilters = {
@@ -19,6 +20,7 @@ export type ParsedReportFilters = {
   from: string | null; // YYYY-MM-DD
   to: string | null;
   techId: string | null;
+  pmResult: string; // ALL | PASS | FAIL — meaningful for type pm
 };
 
 const REPORT_TYPES: ReportType[] = ["cm", "pm", "equipment", "contracts"];
@@ -53,7 +55,14 @@ export function parseReportFilters(
     ? params.to
     : null;
 
-  return { type, facilityId, status, from, to, techId };
+  let pmResult = (params.pmResult || "ALL").toUpperCase();
+  if (type === "pm") {
+    if (!["ALL", "PASS", "FAIL"].includes(pmResult)) pmResult = "ALL";
+  } else {
+    pmResult = "ALL";
+  }
+
+  return { type, facilityId, status, from, to, techId, pmResult };
 }
 
 /** End-exclusive next day for inclusive YYYY-MM-DD "to" dates. */
@@ -75,6 +84,9 @@ export function buildPrintHref(filters: ParsedReportFilters): string | null {
   if (filters.techId) q.set("tech", filters.techId);
   if (filters.from) q.set("from", filters.from);
   if (filters.to) q.set("to", filters.to);
+  if (filters.type === "pm" && filters.pmResult && filters.pmResult !== "ALL") {
+    q.set("pmResult", filters.pmResult);
+  }
   const path =
     filters.type === "cm"
       ? "/reports/print/cm"
@@ -111,6 +123,12 @@ export function statusLabelFor(type: ReportType, status: string): string {
   return status === "ACTIVE" ? "Active" : "All";
 }
 
+export function pmResultLabel(pmResult: string): string {
+  if (pmResult === "PASS") return "Pass";
+  if (pmResult === "FAIL") return "Fail";
+  return "All results";
+}
+
 function workOrderWhere(
   organizationId: string,
   woType: "CM" | "PM",
@@ -123,6 +141,10 @@ function workOrderWhere(
 
   if (filters.status === "OPEN") where.status = "OPEN";
   else if (filters.status === "CLOSED") where.status = "CLOSED";
+
+  if (woType === "PM" && (filters.pmResult === "PASS" || filters.pmResult === "FAIL")) {
+    where.pmResult = filters.pmResult;
+  }
 
   if (filters.techId) where.assignedTechId = filters.techId;
 

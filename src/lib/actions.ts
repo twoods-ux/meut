@@ -317,6 +317,16 @@ export async function closeWorkOrder(id: string, formData: FormData) {
   });
   if (!existing) throw new Error("Work order not found");
   const laborHours = parseFloat(String(formData.get("laborHours") || "0")) || 0;
+  const rawPmResult = String(formData.get("pmResult") || "")
+    .trim()
+    .toUpperCase();
+  let pmResult: string | null = null;
+  if (existing.type === "PM") {
+    if (rawPmResult !== "PASS" && rawPmResult !== "FAIL") {
+      throw new Error("Pass or Fail is required when closing a PM work order");
+    }
+    pmResult = rawPmResult;
+  }
   await prisma.workOrder.update({
     where: { id },
     data: {
@@ -326,11 +336,14 @@ export async function closeWorkOrder(id: string, formData: FormData) {
       workPerformed: String(formData.get("workPerformed") || "") || null,
       comments: String(formData.get("comments") || "") || null,
       closedById: userId,
+      pmResult,
     },
   });
   revalidatePath("/cm-work-orders");
   revalidatePath("/pm-work-orders");
   revalidatePath(`/cm-work-orders/${id}`);
+  revalidatePath(`/pm-work-orders/${id}/print`);
+  revalidatePath("/reports");
 }
 
 export async function generatePmWorkOrders(formData: FormData) {

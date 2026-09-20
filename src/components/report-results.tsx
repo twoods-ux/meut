@@ -4,6 +4,7 @@ import { StatusBadge } from "@/components/ui";
 import { formatDate } from "@/lib/utils";
 import {
   buildPrintHref,
+  pmResultLabel,
   reportTypeLabel,
   statusLabelFor,
   type ParsedReportFilters,
@@ -17,9 +18,11 @@ type WoRow = {
   controlNum: string | null;
   workRequested: string | null;
   dateOpened: Date;
+  dateClosed: Date | null;
   laborHours: number | null;
   pmMonth: string | null;
   pmSchedule1: string | null;
+  pmResult: string | null;
   assignedTechCode: string | null;
   assignedTech: { name: string } | null;
   equipment: {
@@ -95,6 +98,9 @@ function filterSummary(
         `${filters.from || "…"} → ${filters.to || "…"}`
       );
     }
+  }
+  if (filters.type === "pm" && filters.pmResult && filters.pmResult !== "ALL") {
+    parts.push(pmResultLabel(filters.pmResult));
   }
   return parts.join(" · ");
 }
@@ -173,6 +179,8 @@ function WorkOrderTable({
             <th>Facility</th>
             {isPm ? <th>Schedule</th> : <th>Priority</th>}
             <th>Status</th>
+            {isPm ? <th>Result</th> : null}
+            {isPm ? <th>Date closed</th> : null}
             <th>Opened</th>
             <th>Tech</th>
             {isPm ? <th>Labor</th> : <th>Work requested</th>}
@@ -204,6 +212,18 @@ function WorkOrderTable({
               <td>
                 <StatusBadge status={wo.status} />
               </td>
+              {isPm ? (
+                <td>
+                  {wo.pmResult ? (
+                    <StatusBadge status={wo.pmResult} />
+                  ) : (
+                    "—"
+                  )}
+                </td>
+              ) : null}
+              {isPm ? (
+                <td>{wo.dateClosed ? formatDate(wo.dateClosed) : "—"}</td>
+              ) : null}
               <td>{formatDate(wo.dateOpened)}</td>
               <td>{wo.assignedTech?.name || wo.assignedTechCode || "—"}</td>
               {isPm ? (
@@ -220,7 +240,7 @@ function WorkOrderTable({
           {rows.length === 0 ? (
             <tr>
               <td
-                colSpan={isPm ? 9 : 8}
+                colSpan={isPm ? 11 : 8}
                 className="py-6 text-center text-slate-400"
               >
                 No work orders match this selection

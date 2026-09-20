@@ -50,6 +50,8 @@ export default async function PmPage({
     revalidatePath("/pm-work-orders");
   }
 
+  const showClosedCols = status === "CLOSED" || status === "ALL";
+
   return (
     <div>
       <PageHeader
@@ -94,6 +96,8 @@ export default async function PmPage({
                 <th>Control #</th>
                 <th>Schedule</th>
                 <th>Status</th>
+                {showClosedCols ? <th>Result</th> : null}
+                {showClosedCols ? <th>Date closed</th> : null}
                 <th>Tech</th>
                 <th>Opened</th>
                 <th className="print:hidden">Print</th>
@@ -112,6 +116,18 @@ export default async function PmPage({
                   </td>
                   <td>{wo.pmSchedule1 || wo.equipment.pmSchedule1 || "—"}</td>
                   <td><StatusBadge status={wo.status} /></td>
+                  {showClosedCols ? (
+                    <td>
+                      {wo.pmResult ? (
+                        <StatusBadge status={wo.pmResult} />
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
+                    </td>
+                  ) : null}
+                  {showClosedCols ? (
+                    <td>{wo.dateClosed ? formatDate(wo.dateClosed) : "—"}</td>
+                  ) : null}
                   <td>{wo.assignedTech?.name || wo.assignedTechCode || "—"}</td>
                   <td>{formatDate(wo.dateOpened)}</td>
                   <td className="print:hidden">
@@ -125,9 +141,22 @@ export default async function PmPage({
                   </td>
                   <td className="print:hidden">
                     {wo.status === "OPEN" ? (
-                      <form action={closeAction} className="flex items-center gap-1">
+                      <form action={closeAction} className="flex flex-wrap items-center gap-1">
                         <input type="hidden" name="id" value={wo.id} />
                         <input type="hidden" name="workPerformed" value="PM completed per procedure" />
+                        <select
+                          className="input w-[5.5rem] py-1 text-xs"
+                          name="pmResult"
+                          required
+                          defaultValue=""
+                          title="Pass or Fail"
+                        >
+                          <option value="" disabled>
+                            Result
+                          </option>
+                          <option value="PASS">Pass</option>
+                          <option value="FAIL">Fail</option>
+                        </select>
                         <input
                           className="input w-16 py-1"
                           name="laborHours"

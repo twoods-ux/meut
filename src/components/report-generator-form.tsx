@@ -21,6 +21,7 @@ type Defaults = {
   from?: string;
   to?: string;
   tech?: string;
+  pmResult?: string;
 };
 
 const REPORT_OPTIONS: {
@@ -84,6 +85,7 @@ function buildQuery(values: {
   from: string;
   to: string;
   tech: string;
+  pmResult: string;
 }): string {
   const q = new URLSearchParams();
   q.set("type", values.type);
@@ -95,6 +97,9 @@ function buildQuery(values: {
     if (values.from) q.set("from", values.from);
     if (values.to) q.set("to", values.to);
     if (values.tech && values.tech !== "ALL") q.set("tech", values.tech);
+  }
+  if (values.type === "pm" && values.pmResult && values.pmResult !== "ALL") {
+    q.set("pmResult", values.pmResult);
   }
   return q.toString();
 }
@@ -133,9 +138,13 @@ export function ReportGeneratorForm({
   const [from, setFrom] = useState(defaults.from || "");
   const [to, setTo] = useState(defaults.to || "");
   const [tech, setTech] = useState(defaults.tech || "ALL");
+  const [pmResult, setPmResult] = useState(
+    (defaults.pmResult || "ALL").toUpperCase()
+  );
 
   const statuses = useMemo(() => statusOptions(type), [type]);
   const isWorkOrder = type === "cm" || type === "pm";
+  const isPm = type === "pm";
 
   function onTypeChange(next: ReportType) {
     setType(next);
@@ -143,10 +152,11 @@ export function ReportGeneratorForm({
     if (!allowed.includes(status)) {
       setStatus(defaultStatusFor(next));
     }
+    if (next !== "pm") setPmResult("ALL");
   }
 
   function currentQuery() {
-    return buildQuery({ type, facility, status, from, to, tech });
+    return buildQuery({ type, facility, status, from, to, tech, pmResult });
   }
 
   function onGenerate(e: React.FormEvent) {
@@ -253,6 +263,24 @@ export function ReportGeneratorForm({
               ))}
             </select>
           </div>
+
+          {isPm ? (
+            <div>
+              <label className="label" htmlFor="report-pm-result">
+                Pass / Fail
+              </label>
+              <select
+                id="report-pm-result"
+                className="input"
+                value={pmResult}
+                onChange={(e) => setPmResult(e.target.value)}
+              >
+                <option value="ALL">All</option>
+                <option value="PASS">Pass</option>
+                <option value="FAIL">Fail</option>
+              </select>
+            </div>
+          ) : null}
 
           {isWorkOrder ? (
             <div>

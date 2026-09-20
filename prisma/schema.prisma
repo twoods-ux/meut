@@ -243,6 +243,7 @@ model WorkOrder {
   woNumber         Int // WO — unique within org
   type             String // CM | PM
   status           String    @default("OPEN") // OPEN | CLOSED | CANCELLED
+  pmResult         String?   // PASS | FAIL — only meaningful for type PM when CLOSED
   equipmentId      String
   controlNum       String? // denormalized ControlNum
   hospId           String?
