@@ -8,21 +8,28 @@ export const dynamic = "force-dynamic";
 
 export default async function QuickEntryPage() {
   const { organizationId } = await requireOrgSession();
-  const techs = await prisma.user.findMany({
-    where: {
-      organizationId,
-      active: true,
-      role: { in: ["TECH", "SUPERVISOR"] },
-    },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true, techId: true, username: true },
-  });
+  const [facilities, techs] = await Promise.all([
+    prisma.hospital.findMany({
+      where: { organizationId, active: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, hospId: true },
+    }),
+    prisma.user.findMany({
+      where: {
+        organizationId,
+        active: true,
+        role: { in: ["TECH", "SUPERVISOR"] },
+      },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, techId: true, username: true },
+    }),
+  ]);
 
   return (
     <div>
       <PageHeader
         title="Quick Entry"
-        subtitle="Fast-open a corrective (CM) work order by Control # — MediMizer-style"
+        subtitle="Fast-open a corrective (CM) work order by Control #"
         actions={
           <div className="flex flex-wrap gap-2">
             <Link href="/quick-close" className="btn-secondary">
@@ -34,7 +41,7 @@ export default async function QuickEntryPage() {
           </div>
         }
       />
-      <QuickEntryForm techs={techs} />
+      <QuickEntryForm facilities={facilities} techs={techs} />
     </div>
   );
 }

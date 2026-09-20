@@ -278,6 +278,23 @@ export async function updateTechnician(id: string, formData: FormData) {
 
 export async function openCmWorkOrder(formData: FormData) {
   const { organizationId, userId } = await requireStaffSession();
+  const facilityValue = String(
+    formData.get("facility") || formData.get("hospitalId") || ""
+  ).trim();
+  const facilityId =
+    facilityValue && facilityValue !== "ALL" ? facilityValue : null;
+  let facilityScope: Prisma.EquipmentWhereInput = {};
+  if (facilityId) {
+    const hospital = await prisma.hospital.findFirst({
+      where: { id: facilityId, organizationId },
+      select: { id: true, hospId: true },
+    });
+    if (!hospital) throw new Error("Hospital not found");
+    facilityScope = {
+      OR: [{ hospitalId: hospital.id }, { hospId: hospital.hospId }],
+    };
+  }
+
   let equipmentId = String(formData.get("equipmentId") || "").trim();
   const controlNumRaw = String(formData.get("controlNum") || "").trim();
   if (!equipmentId && controlNumRaw) {
@@ -285,6 +302,7 @@ export async function openCmWorkOrder(formData: FormData) {
       where: {
         organizationId,
         controlNum: { equals: controlNumRaw, mode: "insensitive" },
+        ...facilityScope,
       },
     });
     if (!byControl) throw new Error(`Equipment not found for Control # ${controlNumRaw}`);
@@ -292,7 +310,7 @@ export async function openCmWorkOrder(formData: FormData) {
   }
   if (!equipmentId) throw new Error("Equipment or Control # is required");
   const eq = await prisma.equipment.findFirstOrThrow({
-    where: { id: equipmentId, organizationId },
+    where: { id: equipmentId, organizationId, ...facilityScope },
   });
   const workRequested = String(formData.get("workRequested") || "").trim();
   if (!workRequested) throw new Error("Problem / description is required");
@@ -326,15 +344,31 @@ export async function openCmWorkOrder(formData: FormData) {
 }
 
 /** Typeahead / lookup equipment by Control # within the current org. */
-export async function lookupEquipmentByControlNum(query: string) {
+export async function lookupEquipmentByControlNum(
+  query: string,
+  facilityId?: string
+) {
   const { organizationId } = await requireStaffSession();
   const q = String(query || "").trim();
   if (!q) return [];
+  const rawFacilityId = String(facilityId || "").trim();
+  let facilityScope: Prisma.EquipmentWhereInput = {};
+  if (rawFacilityId && rawFacilityId !== "ALL") {
+    const hospital = await prisma.hospital.findFirst({
+      where: { id: rawFacilityId, organizationId },
+      select: { id: true, hospId: true },
+    });
+    if (!hospital) throw new Error("Hospital not found");
+    facilityScope = {
+      OR: [{ hospitalId: hospital.id }, { hospId: hospital.hospId }],
+    };
+  }
   const matches = await prisma.equipment.findMany({
     where: {
       organizationId,
       status: "ACTIVE",
       controlNum: { contains: q, mode: "insensitive" },
+      ...facilityScope,
     },
     select: {
       id: true,
@@ -430,8 +464,33 @@ export async function generatePmWorkOrders(formData: FormData) {
   const { organizationId, userId } = await requireStaffSession();
   const month = String(formData.get("month") || "").trim(); // YYYY-MM
   if (!/^\d{4}-\d{2}$/.test(month)) throw new Error("month must be YYYY-MM");
+
+  // Accept both names so callers can use the same facility value as the list
+  // filters or the model field name. "ALL" (and an omitted value) means no
+  // facility restriction.
+  const facilityValue = String(
+    formData.get("facility") || formData.get("hospitalId") || ""
+  ).trim();
+  const facilityId =
+    facilityValue && facilityValue !== "ALL" ? facilityValue : null;
+  let equipmentWhere: Prisma.EquipmentWhereInput = {
+    organizationId,
+    onPm: true,
+    status: "ACTIVE",
+  };
+  if (facilityId) {
+    const hospital = await prisma.hospital.findFirst({
+      where: { id: facilityId, organizationId },
+      select: { id: true, hospId: true },
+    });
+    if (!hospital) throw new Error("Hospital not found");
+    equipmentWhere = {
+      ...equipmentWhere,
+      OR: [{ hospitalId: hospital.id }, { hospId: hospital.hospId }],
+    };
+  }
   const equipment = await prisma.equipment.findMany({
-    where: { organizationId, onPm: true, status: "ACTIVE" },
+    where: equipmentWhere,
   });
   let created = 0;
   for (const eq of equipment) {

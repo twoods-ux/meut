@@ -8,6 +8,7 @@ import {
 } from "@/lib/actions";
 
 type Tech = { id: string; name: string; techId: string | null; username: string };
+type Facility = { id: string; name: string; hospId: string };
 type EqMatch = {
   id: string;
   controlNum: string;
@@ -24,9 +25,16 @@ function eqLabel(e: EqMatch) {
   return `${e.controlNum} — ${desc}`;
 }
 
-export function QuickEntryForm({ techs }: { techs: Tech[] }) {
+export function QuickEntryForm({
+  facilities,
+  techs,
+}: {
+  facilities: Facility[];
+  techs: Tech[];
+}) {
   const controlRef = useRef<HTMLInputElement>(null);
   const [controlQuery, setControlQuery] = useState("");
+  const [facilityId, setFacilityId] = useState("ALL");
   const [matches, setMatches] = useState<EqMatch[]>([]);
   const [selected, setSelected] = useState<EqMatch | null>(null);
   const [showSuggest, setShowSuggest] = useState(false);
@@ -54,7 +62,7 @@ export function QuickEntryForm({ techs }: { techs: Tech[] }) {
     const t = setTimeout(() => {
       startLookup(async () => {
         try {
-          const rows = await lookupEquipmentByControlNum(q);
+          const rows = await lookupEquipmentByControlNum(q, facilityId);
           setMatches(rows);
           setShowSuggest(true);
         } catch {
@@ -63,7 +71,7 @@ export function QuickEntryForm({ techs }: { techs: Tech[] }) {
       });
     }, 200);
     return () => clearTimeout(t);
-  }, [controlQuery, selected]);
+  }, [controlQuery, selected, facilityId]);
 
   function pickEquipment(e: EqMatch) {
     setSelected(e);
@@ -79,7 +87,7 @@ export function QuickEntryForm({ techs }: { techs: Tech[] }) {
     if (!q) return;
     startLookup(async () => {
       try {
-        const rows = await lookupEquipmentByControlNum(q);
+        const rows = await lookupEquipmentByControlNum(q, facilityId);
         const exact =
           rows.find(
             (r) => r.controlNum.toLowerCase() === q.toLowerCase()
@@ -118,6 +126,7 @@ export function QuickEntryForm({ techs }: { techs: Tech[] }) {
     const fd = new FormData(form);
     if (selected?.id) fd.set("equipmentId", selected.id);
     fd.set("controlNum", controlQuery.trim());
+    fd.set("facility", facilityId);
     startSubmit(async () => {
       try {
         const result = await openCmWorkOrder(fd);
@@ -164,6 +173,29 @@ export function QuickEntryForm({ techs }: { techs: Tech[] }) {
       ) : null}
 
       <form onSubmit={onLookupSubmit} className="card space-y-3">
+        <div>
+          <label className="label" htmlFor="qe-facility">
+            Facility
+          </label>
+          <select
+            id="qe-facility"
+            className="input"
+            value={facilityId}
+            onChange={(event) => {
+              setFacilityId(event.target.value);
+              setSelected(null);
+              setMatches([]);
+              setMessage(null);
+            }}
+          >
+            <option value="ALL">All facilities</option>
+            {facilities.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name} ({f.hospId})
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="relative">
           <label className="label" htmlFor="qe-control">
             Control # *

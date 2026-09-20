@@ -4,20 +4,35 @@ import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui";
 import { openCmWorkOrder } from "@/lib/actions";
 import { requireOrgSession } from "@/lib/tenant";
+import { FacilityEquipmentSelect } from "@/components/facility-equipment-select";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewCmPage({
   searchParams,
 }: {
-  searchParams: { equipmentId?: string };
+  searchParams: { equipmentId?: string; facility?: string };
 }) {
   const { organizationId } = await requireOrgSession();
-  const [equipment, techs] = await Promise.all([
+  const [facilities, equipment, techs] = await Promise.all([
+    prisma.hospital.findMany({
+      where: { organizationId, active: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, hospId: true },
+    }),
     prisma.equipment.findMany({
       where: { organizationId, status: "ACTIVE" },
       orderBy: { controlNum: "asc" },
       take: 1000,
+      select: {
+        id: true,
+        controlNum: true,
+        description: true,
+        model: true,
+        manufacturer: true,
+        hospitalId: true,
+        hospId: true,
+      },
     }),
     prisma.user.findMany({
       where: { organizationId, active: true },
@@ -39,22 +54,12 @@ export default async function NewCmPage({
         actions={<Link href="/cm-work-orders" className="btn-secondary">Back</Link>}
       />
       <form action={action} className="card max-w-2xl space-y-4">
-        <div>
-          <label className="label">Equipment (Control #) *</label>
-          <select
-            className="input"
-            name="equipmentId"
-            required
-            defaultValue={searchParams.equipmentId || ""}
-          >
-            <option value="">Select…</option>
-            {equipment.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.controlNum} — {e.description || e.model || e.manufacturer || "equipment"}
-              </option>
-            ))}
-          </select>
-        </div>
+        <FacilityEquipmentSelect
+          facilities={facilities}
+          equipment={equipment}
+          initialFacilityId={searchParams.facility || "ALL"}
+          initialEquipmentId={searchParams.equipmentId || ""}
+        />
         <div>
           <label className="label">Priority</label>
           <select className="input" name="priority" defaultValue="ROUTINE">

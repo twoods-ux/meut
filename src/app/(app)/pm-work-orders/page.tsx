@@ -136,13 +136,31 @@ export default async function PmPage({
             pattern="\d{4}-\d{2}"
           />
         </div>
+        <div>
+          <label className="label" htmlFor="generateFacility">
+            Facility
+          </label>
+          <select
+            className="input"
+            id="generateFacility"
+            name="facility"
+            defaultValue="ALL"
+          >
+            <option value="ALL">All facilities</option>
+            {facilities.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name} ({f.hospId})
+              </option>
+            ))}
+          </select>
+        </div>
         <button type="submit" className="btn-primary">
           Generate PM WOs
         </button>
         <p className="w-full text-xs text-slate-500">
-          Creates open PM work orders for all active equipment with On PM (
-          {onPmCount} devices). Skips equipment that already has a PM WO for that
-          month.
+          Creates open PM work orders for active equipment with On PM ({onPmCount} devices
+          across all facilities). A selected facility limits generation to that facility.
+          Skips equipment that already has a PM WO for that month.
         </p>
       </form>
 
