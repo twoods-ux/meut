@@ -3,23 +3,34 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { formatDateTime } from "@/lib/utils";
-import { requireCustomerSession } from "@/lib/tenant";
+import {
+  requireCustomerSession,
+  resolveCustomerFacility,
+  customerFacilityEquipmentWhere,
+} from "@/lib/tenant";
 import { resolveRouteParams } from "@/lib/route-params";
 
 export const dynamic = "force-dynamic";
 
 export default async function CustomerWorkOrderDetailPage({
   params,
+  searchParams,
 }: {
   params: { id: string };
+  searchParams?: { created?: string; controlNum?: string };
 }) {
   const { id: routeId } = await resolveRouteParams(params);
+  const justCreated = searchParams?.created === "1";
+  const createdControl =
+    searchParams?.controlNum?.trim() || "";
   const { organizationId, hospitalId } = await requireCustomerSession();
+  const facility = await resolveCustomerFacility(organizationId, hospitalId);
+  if (!facility) notFound();
   const wo = await prisma.workOrder.findFirst({
     where: {
       id: routeId,
       organizationId,
-      equipment: { hospitalId },
+      equipment: customerFacilityEquipmentWhere(organizationId, facility),
     },
     include: {
       equipment: { include: { hospital: true, department: true } },
@@ -30,11 +41,25 @@ export default async function CustomerWorkOrderDetailPage({
   });
   if (!wo) notFound();
 
+  const controlLabel = wo.controlNum || wo.equipment.controlNum;
+
   return (
     <div>
+      {justCreated ? (
+        <div
+          role="status"
+          className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
+        >
+          <p className="font-medium">CM request submitted</p>
+          <p className="mt-1">
+            Work order #{wo.woNumber} opened for Control #{" "}
+            {createdControl || controlLabel}.
+          </p>
+        </div>
+      ) : null}
       <PageHeader
         title={`${wo.type} Work Order #${wo.woNumber}`}
-        subtitle={`${wo.equipment.controlNum} — ${wo.equipment.description || wo.equipment.model || ""}`}
+        subtitle={`Control # ${wo.equipment.controlNum} · ${wo.equipment.hospital?.name || facility.name}${wo.equipment.description || wo.equipment.model ? ` — ${wo.equipment.description || wo.equipment.model}` : ""}`}
         actions={
           <Link href="/portal/work-orders" className="btn-secondary">
             Back to work orders

@@ -1,5 +1,7 @@
 import { getServerSession } from "next-auth";
+import { Prisma } from "@prisma/client";
 import { authOptions } from "./auth";
+import { prisma } from "./prisma";
 
 export type OrgSession = {
   userId: string;
@@ -65,4 +67,45 @@ export function slugifyOrgName(name: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
   return base || "org";
+}
+
+export type CustomerFacility = {
+  id: string;
+  hospId: string;
+  name: string;
+};
+
+/** Resolve customer's hospital (id + MediMizer facility code). */
+export async function resolveCustomerFacility(
+  organizationId: string,
+  hospitalId: string
+): Promise<CustomerFacility | null> {
+  const hospital = await prisma.hospital.findFirst({
+    where: { id: hospitalId, organizationId },
+    select: { id: true, hospId: true, name: true },
+  });
+  if (!hospital) return null;
+  return hospital;
+}
+
+/**
+ * Equipment scoped to a customer facility.
+ * Matches hospitalId FK *or* hospId facility code (MediMizer imports often
+ * leave hospitalId null while setting hospId). Never broader than that facility.
+ */
+export function customerFacilityEquipmentWhere(
+  organizationId: string,
+  facility: { id: string; hospId: string },
+  extra?: Prisma.EquipmentWhereInput
+): Prisma.EquipmentWhereInput {
+  const facilityOr: Prisma.EquipmentWhereInput = {
+    OR: [{ hospitalId: facility.id }, { hospId: facility.hospId }],
+  };
+  if (!extra || Object.keys(extra).length === 0) {
+    return { organizationId, ...facilityOr };
+  }
+  return {
+    organizationId,
+    AND: [facilityOr, extra],
+  };
 }

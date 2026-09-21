@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { requireCustomerSession } from "@/lib/tenant";
+import {
+  requireCustomerSession,
+  resolveCustomerFacility,
+  customerFacilityEquipmentWhere,
+} from "@/lib/tenant";
 import { PrintHeader, PrintToolbar } from "@/components/print-header";
 import { formatDate } from "@/lib/utils";
 import { Prisma } from "@prisma/client";
@@ -17,11 +21,8 @@ export default async function CustomerReportsPrintPage({
   const from = searchParams.from?.trim() || "";
   const to = searchParams.to?.trim() || "";
 
-  const [hospital, orgBrand] = await Promise.all([
-    prisma.hospital.findFirst({
-      where: { id: hospitalId, organizationId },
-      select: { name: true },
-    }),
+  const [facility, orgBrand] = await Promise.all([
+    resolveCustomerFacility(organizationId, hospitalId),
     prisma.organization.findUnique({
       where: { id: organizationId },
       select: { logoDataUrl: true },
@@ -31,7 +32,9 @@ export default async function CustomerReportsPrintPage({
   const where: Prisma.WorkOrderWhereInput = {
     organizationId,
     status: "CLOSED",
-    equipment: { hospitalId },
+    equipment: facility
+      ? customerFacilityEquipmentWhere(organizationId, facility)
+      : { hospitalId },
   };
   if (typeFilter === "CM" || typeFilter === "PM") {
     where.type = typeFilter;
@@ -85,7 +88,7 @@ export default async function CustomerReportsPrintPage({
           organizationName={org}
           logoSrc={printLogoSrc}
           title="Completed CM / PM Reports"
-          subtitle={`${typeLabel} · ${hospital?.name || "Facility"}${datePart} · ${wos.length} record(s)`}
+          subtitle={`${typeLabel} · ${facility?.name || "Facility"}${datePart} · ${wos.length} record(s)`}
         />
         <div className="overflow-x-auto">
           <table className="data-table text-xs">

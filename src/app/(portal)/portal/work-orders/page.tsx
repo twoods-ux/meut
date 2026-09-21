@@ -2,7 +2,11 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { PageHeader, StatusBadge, EmptyState } from "@/components/ui";
 import { formatDate } from "@/lib/utils";
-import { requireCustomerSession } from "@/lib/tenant";
+import {
+  requireCustomerSession,
+  resolveCustomerFacility,
+  customerFacilityEquipmentWhere,
+} from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
@@ -15,13 +19,15 @@ export default async function CustomerWorkOrdersPage({
   const status = searchParams.status || "OPEN";
   const typeFilter = searchParams.type || "ALL";
 
-  const hospital = await prisma.hospital.findFirst({
-    where: { id: hospitalId, organizationId },
-  });
+  const facility = await resolveCustomerFacility(organizationId, hospitalId);
 
   const where: Record<string, unknown> = {
     organizationId,
-    equipment: { hospitalId },
+    ...(facility
+      ? {
+          equipment: customerFacilityEquipmentWhere(organizationId, facility),
+        }
+      : { equipment: { hospitalId } }),
   };
   if (typeFilter === "CM" || typeFilter === "PM") {
     where.type = typeFilter;
@@ -55,7 +61,7 @@ export default async function CustomerWorkOrdersPage({
     <div>
       <PageHeader
         title="Work orders"
-        subtitle={`CM and PM work orders for ${hospital?.name || "your facility"}`}
+        subtitle={`Facility: ${facility?.name || "your facility"}`}
         actions={
           <Link href="/portal/work-orders/new" className="btn-primary">
             Request CM

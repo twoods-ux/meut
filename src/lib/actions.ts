@@ -15,6 +15,8 @@ import {
   requireStaffSession,
   requireCustomerSession,
   slugifyOrgName,
+  resolveCustomerFacility,
+  customerFacilityEquipmentWhere,
 } from "./tenant";
 import { claimCheckoutSessionForOrg } from "./billing-sync";
 import { isBillingInterval } from "./billing";
@@ -451,50 +453,117 @@ export async function openCmWorkOrder(formData: FormData) {
 }
 
 /** Customer portal: open a CM work order for equipment at their facility only. */
-export async function createCustomerCmWorkOrder(formData: FormData) {
-  const { organizationId, userId, hospitalId } = await requireCustomerSession();
-  const equipmentId = String(formData.get("equipmentId") || "").trim();
-  if (!equipmentId) throw new Error("Equipment is required");
+export async function createCustomerCmWorkOrder(
+  formData: FormData
+): Promise<
+  | { ok: true; id: string; woNumber: number; controlNum: string }
+  | { ok: false; error: string }
+> {
+  try {
+    const { organizationId, userId, hospitalId } = await requireCustomerSession();
+    const equipmentId = String(formData.get("equipmentId") || "").trim();
+    if (!equipmentId) {
+      return { ok: false, error: "Select a Control # for this CM request" };
+    }
 
-  const eq = await prisma.equipment.findFirst({
-    where: {
-      id: equipmentId,
-      organizationId,
-      hospitalId,
-    },
-  });
-  if (!eq) {
-    throw new Error("Equipment not found at your facility");
-  }
+    const facility = await resolveCustomerFacility(organizationId, hospitalId);
+    if (!facility) {
+      return {
+        ok: false,
+        error: "Your account is not linked to a valid facility",
+      };
+    }
 
-  const workRequested = String(formData.get("workRequested") || "").trim();
-  if (!workRequested) throw new Error("Problem / description is required");
+    const eq = await prisma.equipment.findFirst({
+      where: customerFacilityEquipmentWhere(organizationId, facility, {
+        id: equipmentId,
+      }),
+    });
+    if (!eq) {
+      return {
+        ok: false,
+        error:
+          "That Control # was not found at your facility. Pick equipment from the list.",
+      };
+    }
 
-  const priorityRaw = String(formData.get("priority") || "ROUTINE").trim().toUpperCase();
-  const allowedPriorities = new Set(["STAT", "URGENT", "ROUTINE"]);
-  const priority = allowedPriorities.has(priorityRaw) ? priorityRaw : "ROUTINE";
+    const workRequested = String(formData.get("workRequested") || "").trim();
+    if (!workRequested) {
+      return {
+        ok: false,
+        error: `Problem / description is required for Control # ${eq.controlNum}`,
+      };
+    }
 
-  const woNumber = await nextWoNumber(organizationId);
-  const wo = await prisma.workOrder.create({
-    data: {
-      organizationId,
-      woNumber,
-      type: "CM",
-      status: "OPEN",
-      equipmentId: eq.id,
+    const priorityRaw = String(formData.get("priority") || "ROUTINE")
+      .trim()
+      .toUpperCase();
+    const allowedPriorities = new Set(["STAT", "URGENT", "ROUTINE"]);
+    const priority = allowedPriorities.has(priorityRaw) ? priorityRaw : "ROUTINE";
+
+    const woNumber = await nextWoNumber(organizationId);
+    const wo = await prisma.workOrder.create({
+      data: {
+        organizationId,
+        woNumber,
+        type: "CM",
+        status: "OPEN",
+        equipmentId: eq.id,
+        controlNum: eq.controlNum,
+        hospId: eq.hospId,
+        costCtr: eq.costCtr,
+        workRequested,
+        priority,
+        openedById: userId,
+      },
+    });
+
+    revalidatePath("/portal/work-orders");
+    revalidatePath("/portal/reports");
+    revalidatePath("/cm-work-orders");
+    return {
+      ok: true,
+      id: wo.id,
+      woNumber: wo.woNumber,
       controlNum: eq.controlNum,
-      hospId: eq.hospId,
-      costCtr: eq.costCtr,
-      workRequested,
-      priority,
-      openedById: userId,
-    },
-  });
+    };
+  } catch (error) {
+    console.error("createCustomerCmWorkOrder failed", error);
+    return {
+      ok: false,
+      error: actionErrorMessage(
+        error,
+        "Could not submit CM request. Please try again."
+      ),
+    };
+  }
+}
 
-  revalidatePath("/portal/work-orders");
-  revalidatePath("/portal/reports");
-  revalidatePath("/cm-work-orders");
-  return { id: wo.id, woNumber: wo.woNumber, controlNum: eq.controlNum };
+function redirectCustomerNewCm(opts: {
+  error?: string;
+  equipmentId?: string;
+}) {
+  const params = new URLSearchParams();
+  if (opts.error) params.set("error", opts.error.slice(0, 300));
+  if (opts.equipmentId) params.set("equipmentId", opts.equipmentId);
+  const q = params.toString();
+  redirect(q ? `/portal/work-orders/new?${q}` : "/portal/work-orders/new");
+}
+
+/** Form action for portal Request CM (friendly redirect UX, no bare throws). */
+export async function createCustomerCmWorkOrderAction(formData: FormData) {
+  const equipmentId = String(formData.get("equipmentId") || "").trim();
+  const result = await createCustomerCmWorkOrder(formData);
+  if (!result.ok) {
+    redirectCustomerNewCm({
+      error: result.error,
+      equipmentId: equipmentId || undefined,
+    });
+  } else {
+    redirect(
+      `/portal/work-orders/${result.id}?created=1&controlNum=${encodeURIComponent(result.controlNum)}`
+    );
+  }
 }
 
 /** Typeahead / lookup equipment by Control # within the current org. */

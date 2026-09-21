@@ -1,8 +1,13 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { PageHeader, StatusBadge, EmptyState } from "@/components/ui";
-import { requireCustomerSession } from "@/lib/tenant";
+import {
+  requireCustomerSession,
+  resolveCustomerFacility,
+  customerFacilityEquipmentWhere,
+} from "@/lib/tenant";
 import { Search } from "lucide-react";
+import type { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -15,14 +20,13 @@ export default async function CustomerInventoryPage({
   const q = searchParams.q?.trim() || "";
   const statusFilter = searchParams.status || "ACTIVE";
 
-  const where: Record<string, unknown> = {
-    organizationId,
-    hospitalId,
-  };
-  if (statusFilter === "ACTIVE") where.status = "ACTIVE";
-  else if (statusFilter === "RETIRED") where.status = "RETIRED";
+  const facility = await resolveCustomerFacility(organizationId, hospitalId);
+
+  const extra: Prisma.EquipmentWhereInput = {};
+  if (statusFilter === "ACTIVE") extra.status = "ACTIVE";
+  else if (statusFilter === "RETIRED") extra.status = "RETIRED";
   if (q) {
-    where.OR = [
+    extra.OR = [
       { controlNum: { contains: q } },
       { serial: { contains: q } },
       { manufacturer: { contains: q } },
@@ -32,22 +36,20 @@ export default async function CustomerInventoryPage({
     ];
   }
 
-  const hospital = await prisma.hospital.findFirst({
-    where: { id: hospitalId, organizationId },
-  });
-
-  const equipment = await prisma.equipment.findMany({
-    where,
-    include: { department: true },
-    orderBy: { controlNum: "asc" },
-    take: 500,
-  });
+  const equipment = facility
+    ? await prisma.equipment.findMany({
+        where: customerFacilityEquipmentWhere(organizationId, facility, extra),
+        include: { department: true },
+        orderBy: { controlNum: "asc" },
+        take: 500,
+      })
+    : [];
 
   return (
     <div>
       <PageHeader
         title="Inventory"
-        subtitle={`Equipment at ${hospital?.name || "your facility"} (view only)`}
+        subtitle={`Facility: ${facility?.name || "your facility"} · view by Control #`}
       />
       <form className="card mb-5 flex flex-wrap items-end gap-3 !p-4">
         <div className="min-w-[200px] flex-1">

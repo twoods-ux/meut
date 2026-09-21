@@ -1,49 +1,49 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader, EmptyState } from "@/components/ui";
-import { createCustomerCmWorkOrder } from "@/lib/actions";
-import { requireCustomerSession } from "@/lib/tenant";
+import { createCustomerCmWorkOrderAction } from "@/lib/actions";
+import {
+  requireCustomerSession,
+  resolveCustomerFacility,
+  customerFacilityEquipmentWhere,
+} from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
 export default async function CustomerNewCmPage({
   searchParams,
 }: {
-  searchParams: { equipmentId?: string };
+  searchParams: { equipmentId?: string; error?: string };
 }) {
   const { organizationId, hospitalId } = await requireCustomerSession();
+  const errorMessage = searchParams.error?.trim() || "";
 
-  const [hospital, equipment] = await Promise.all([
-    prisma.hospital.findFirst({
-      where: { id: hospitalId, organizationId },
-    }),
-    prisma.equipment.findMany({
-      where: { organizationId, hospitalId, status: "ACTIVE" },
-      orderBy: { controlNum: "asc" },
-      take: 1000,
-      select: {
-        id: true,
-        controlNum: true,
-        description: true,
-        model: true,
-        manufacturer: true,
-        location: true,
-      },
-    }),
-  ]);
+  const facility = await resolveCustomerFacility(organizationId, hospitalId);
+  const facilityName = facility?.name || "your facility";
 
-  async function action(formData: FormData) {
-    "use server";
-    const { id } = await createCustomerCmWorkOrder(formData);
-    redirect(`/portal/work-orders/${id}`);
-  }
+  const equipment = facility
+    ? await prisma.equipment.findMany({
+        where: customerFacilityEquipmentWhere(organizationId, facility, {
+          status: "ACTIVE",
+        }),
+        orderBy: { controlNum: "asc" },
+        take: 1000,
+        select: {
+          id: true,
+          controlNum: true,
+          description: true,
+          model: true,
+          manufacturer: true,
+          location: true,
+        },
+      })
+    : [];
 
   return (
     <div>
       <PageHeader
         title="Request CM work order"
-        subtitle={`Corrective maintenance for equipment at ${hospital?.name || "your facility"}`}
+        subtitle={`Facility: ${facilityName}`}
         actions={
           <Link href="/portal/work-orders" className="btn-secondary">
             Back
@@ -51,13 +51,33 @@ export default async function CustomerNewCmPage({
         }
       />
 
+      {errorMessage ? (
+        <div
+          role="alert"
+          className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
+        >
+          <p className="font-medium">Could not submit CM request</p>
+          <p className="mt-1">{errorMessage}</p>
+        </div>
+      ) : null}
+
       {equipment.length === 0 ? (
-        <EmptyState message="No active equipment at your facility to request service for." />
+        <EmptyState
+          message={`No active equipment at ${facilityName} to request service for.`}
+        />
       ) : (
-        <form action={action} className="card max-w-2xl space-y-4">
+        <form
+          action={createCustomerCmWorkOrderAction}
+          className="card max-w-2xl space-y-4"
+        >
+          <p className="text-sm text-slate-600">
+            Submit corrective maintenance for equipment at{" "}
+            <span className="font-semibold text-slate-900">{facilityName}</span>.
+            Choose by <span className="font-semibold">Control #</span>.
+          </p>
           <div>
             <label className="label" htmlFor="equipmentId">
-              Equipment (Control #) *
+              Control # *
             </label>
             <select
               className="input"
@@ -67,17 +87,21 @@ export default async function CustomerNewCmPage({
               defaultValue={searchParams.equipmentId || ""}
             >
               <option value="" disabled>
-                Select equipment…
+                Select Control #…
               </option>
-              {equipment.map((eq) => (
-                <option key={eq.id} value={eq.id}>
-                  {eq.controlNum}
-                  {eq.description || eq.model
-                    ? ` — ${eq.description || eq.model}`
-                    : ""}
-                  {eq.location ? ` (${eq.location})` : ""}
-                </option>
-              ))}
+              {equipment.map((eq) => {
+                const extra = [
+                  eq.description || eq.model || "",
+                  eq.location || "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+                return (
+                  <option key={eq.id} value={eq.id}>
+                    {`Control # ${eq.controlNum}${extra ? ` — ${extra}` : ""}`}
+                  </option>
+                );
+              })}
             </select>
           </div>
           <div>

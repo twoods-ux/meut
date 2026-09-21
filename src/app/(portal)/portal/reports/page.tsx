@@ -2,7 +2,11 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { PageHeader, StatusBadge, EmptyState } from "@/components/ui";
 import { formatDate } from "@/lib/utils";
-import { requireCustomerSession } from "@/lib/tenant";
+import {
+  requireCustomerSession,
+  resolveCustomerFacility,
+  customerFacilityEquipmentWhere,
+} from "@/lib/tenant";
 import { PrintButton } from "@/components/print-button";
 import { Prisma } from "@prisma/client";
 
@@ -19,14 +23,14 @@ export default async function CustomerReportsPage({
   const from = searchParams.from?.trim() || "";
   const to = searchParams.to?.trim() || "";
 
-  const hospital = await prisma.hospital.findFirst({
-    where: { id: hospitalId, organizationId },
-  });
+  const facility = await resolveCustomerFacility(organizationId, hospitalId);
 
   const where: Prisma.WorkOrderWhereInput = {
     organizationId,
     status: "CLOSED",
-    equipment: { hospitalId },
+    equipment: facility
+      ? customerFacilityEquipmentWhere(organizationId, facility)
+      : { hospitalId },
   };
   if (typeFilter === "CM" || typeFilter === "PM") {
     where.type = typeFilter;
@@ -91,7 +95,7 @@ export default async function CustomerReportsPage({
       <div className="print:hidden">
         <PageHeader
           title="Completed reports"
-          subtitle={`Closed CM and PM work orders for ${hospital?.name || "your facility"}`}
+          subtitle={`Closed CM and PM work orders for ${facility?.name || "your facility"}`}
           actions={
             <div className="flex flex-wrap gap-2">
               <Link href={printHref} className="btn-secondary">
@@ -105,7 +109,7 @@ export default async function CustomerReportsPage({
 
       <div className="mb-2 hidden print:block">
         <h1 className="text-xl font-bold text-slate-900">
-          Completed reports — {hospital?.name || organizationName || "Facility"}
+          Completed reports — {facility?.name || organizationName || "Facility"}
         </h1>
         <p className="text-sm text-slate-600">
           {typeFilter === "ALL" ? "CM + PM" : typeFilter}

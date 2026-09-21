@@ -3,7 +3,11 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { formatDate } from "@/lib/utils";
-import { requireCustomerSession } from "@/lib/tenant";
+import {
+  requireCustomerSession,
+  resolveCustomerFacility,
+  customerFacilityEquipmentWhere,
+} from "@/lib/tenant";
 import { resolveRouteParams } from "@/lib/route-params";
 
 export const dynamic = "force-dynamic";
@@ -15,8 +19,13 @@ export default async function CustomerEquipmentDetailPage({
 }) {
   const { id: routeId } = await resolveRouteParams(params);
   const { organizationId, hospitalId } = await requireCustomerSession();
+  const facility = await resolveCustomerFacility(organizationId, hospitalId);
+  if (!facility) notFound();
+
   const equipment = await prisma.equipment.findFirst({
-    where: { id: routeId, organizationId, hospitalId },
+    where: customerFacilityEquipmentWhere(organizationId, facility, {
+      id: routeId,
+    }),
     include: {
       hospital: true,
       department: true,
@@ -29,15 +38,18 @@ export default async function CustomerEquipmentDetailPage({
   });
   if (!equipment) notFound();
 
+  const facilityName =
+    equipment.hospital?.name || facility.name || "your facility";
+
   const fields: { label: string; value: string }[] = [
     { label: "Control #", value: equipment.controlNum },
+    { label: "Facility", value: facilityName },
     { label: "Serial", value: equipment.serial || "—" },
     { label: "Manufacturer", value: equipment.manufacturer || "—" },
     { label: "Model", value: equipment.model || "—" },
     { label: "Description", value: equipment.description || "—" },
     { label: "Location", value: equipment.location || "—" },
     { label: "Building", value: equipment.building || "—" },
-    { label: "Facility", value: equipment.hospital?.name || "—" },
     {
       label: "Department",
       value: equipment.department?.name || equipment.costCtr || "—",
@@ -56,8 +68,8 @@ export default async function CustomerEquipmentDetailPage({
   return (
     <div>
       <PageHeader
-        title={`Equipment ${equipment.controlNum}`}
-        subtitle={equipment.description || "Equipment detail (view only)"}
+        title={`Control # ${equipment.controlNum}`}
+        subtitle={`${facilityName} · equipment detail (view only)`}
         actions={
           <div className="flex flex-wrap gap-2">
             <Link
@@ -78,7 +90,7 @@ export default async function CustomerEquipmentDetailPage({
           <span className="badge bg-sky-100 text-sky-800">On PM</span>
         ) : null}
         <span className="text-slate-500">
-          {equipment.hospital?.name} ·{" "}
+          {facilityName} ·{" "}
           {equipment.department?.name || equipment.costCtr || "—"}
         </span>
       </div>
@@ -94,7 +106,9 @@ export default async function CustomerEquipmentDetailPage({
         ))}
       </div>
 
-      <h2 className="mb-3 text-lg font-semibold">Maintenance History</h2>
+      <h2 className="mb-3 text-lg font-semibold">
+        Maintenance History — Control # {equipment.controlNum}
+      </h2>
       <div className="table-wrap">
         <table className="data-table">
           <thead>
