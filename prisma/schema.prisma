@@ -164,6 +164,8 @@ model Equipment {
   pmNextDue          DateTime?
   /// Last successful PM completion (Pass close)
   pmLastCompleted    DateTime?
+  /// PM program/cycle anchor date (when the current PM cycle started)
+  pmCycleStart       DateTime?
   purchaseDate       DateTime? // PurchDate
   purchaseCost       Float? // PurchCost
   warrantyPartsEnd   DateTime? // WarrantyPartsEndDate

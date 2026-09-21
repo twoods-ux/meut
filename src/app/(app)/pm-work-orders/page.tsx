@@ -45,6 +45,8 @@ export default async function PmPage({
   });
   const dueFacility = oneParam(raw.dueFacility) || "ALL";
   const dueView = (oneParam(raw.due) || "overdue").toLowerCase();
+  const deletedWo = oneParam(raw.deleted)?.trim() || "";
+  const deleteError = oneParam(raw.error)?.trim().slice(0, 300) || "";
 
   const where = buildWorkOrderWhere(organizationId, "PM", filters);
 
@@ -180,6 +182,27 @@ export default async function PmPage({
           </a>
         }
       />
+
+      {deletedWo ? (
+        <div
+          role="status"
+          className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
+        >
+          <p className="font-medium">Open PM work order deleted</p>
+          <p className="mt-1">
+            PM #{deletedWo} was removed. The equipment record was not changed.
+          </p>
+        </div>
+      ) : null}
+      {deleteError ? (
+        <div
+          role="alert"
+          className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
+        >
+          <p className="font-medium">Could not delete work order</p>
+          <p className="mt-1">{deleteError}</p>
+        </div>
+      ) : null}
 
       <div className="mb-6 print:hidden">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">

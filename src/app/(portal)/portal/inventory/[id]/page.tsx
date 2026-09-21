@@ -61,6 +61,12 @@ export default async function CustomerEquipmentDetailPage({
         ? `Yes${equipment.pmSchedule1 ? ` (${equipment.pmSchedule1})` : ""}`
         : "No",
     },
+    {
+      label: "PM Cycle Start",
+      value: equipment.pmCycleStart
+        ? formatDate(equipment.pmCycleStart)
+        : "—",
+    },
     { label: "PM Procedure", value: equipment.pmProc1 || "—" },
     { label: "Comments", value: equipment.comments || "—" },
   ];
@@ -88,6 +94,14 @@ export default async function CustomerEquipmentDetailPage({
         <StatusBadge status={equipment.status} />
         {equipment.onPm ? (
           <span className="badge bg-sky-100 text-sky-800">On PM</span>
+        ) : null}
+        {equipment.pmCycleStart ? (
+          <span className="inline-flex items-center gap-1.5 text-sm text-slate-600">
+            <span className="text-slate-400">PM cycle start</span>
+            <span className="font-medium text-slate-700">
+              {formatDate(equipment.pmCycleStart)}
+            </span>
+          </span>
         ) : null}
         <span className="text-slate-500">
           {facilityName} ·{" "}

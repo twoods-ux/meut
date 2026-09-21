@@ -134,6 +134,7 @@ export async function createEquipment(formData: FormData) {
       techAssigned1: String(formData.get("techAssigned1") || "").trim() || null,
       pmNextDue: parseDateInput(String(formData.get("pmNextDue") || "")),
       pmLastCompleted: parseDateInput(String(formData.get("pmLastCompleted") || "")),
+      pmCycleStart: parseDateInput(String(formData.get("pmCycleStart") || "")),
       comments: String(formData.get("comments") || "") || null,
       risk: String(formData.get("risk") || "").trim() || null,
     },
@@ -187,6 +188,7 @@ export async function updateEquipment(id: string, formData: FormData) {
       techAssigned1: String(formData.get("techAssigned1") || "").trim() || null,
       pmNextDue: parseDateInput(String(formData.get("pmNextDue") || "")),
       pmLastCompleted: parseDateInput(String(formData.get("pmLastCompleted") || "")),
+      pmCycleStart: parseDateInput(String(formData.get("pmCycleStart") || "")),
       comments: String(formData.get("comments") || "") || null,
       risk: String(formData.get("risk") || "").trim() || null,
     },
@@ -732,6 +734,64 @@ export async function savePmChecklist(id: string, formData: FormData) {
   revalidatePath(`/pm-work-orders/${id}`);
   revalidatePath(`/pm-work-orders/${id}/print`);
   revalidatePath("/pm-work-orders");
+}
+
+/**
+ * Staff-only: delete an OPEN PM or CM work order (e.g. accidental PM generate).
+ * Never deletes CLOSED WOs or the related equipment record.
+ * Returns a result so callers can redirect with a friendly banner (no Application error).
+ */
+export async function deleteOpenWorkOrder(
+  id: string
+): Promise<
+  | { ok: true; type: string; woNumber: number }
+  | { ok: false; error: string }
+> {
+  try {
+    const { organizationId } = await requireStaffSession();
+    const existing = await prisma.workOrder.findFirst({
+      where: { id, organizationId },
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        woNumber: true,
+        equipmentId: true,
+      },
+    });
+    if (!existing) {
+      return { ok: false, error: "Work order not found" };
+    }
+    if (existing.type !== "PM" && existing.type !== "CM") {
+      return { ok: false, error: "Only PM or CM work orders can be deleted" };
+    }
+    if (existing.status !== "OPEN") {
+      return {
+        ok: false,
+        error: "Only open work orders can be deleted — closed records are kept for history",
+      };
+    }
+    await prisma.workOrder.delete({ where: { id: existing.id } });
+    revalidatePath("/pm-work-orders");
+    revalidatePath("/cm-work-orders");
+    revalidatePath(`/pm-work-orders/${id}`);
+    revalidatePath(`/cm-work-orders/${id}`);
+    revalidatePath(`/equipment/${existing.equipmentId}`);
+    revalidatePath("/equipment");
+    revalidatePath("/dashboard");
+    revalidatePath("/reports");
+    revalidatePath("/quick-close");
+    return {
+      ok: true,
+      type: existing.type,
+      woNumber: existing.woNumber,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: actionErrorMessage(error, "Could not delete work order"),
+    };
+  }
 }
 
 export async function generatePmWorkOrders(formData: FormData) {

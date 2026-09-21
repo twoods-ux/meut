@@ -14,6 +14,7 @@ import { equipmentColumnsFromPrefs } from "@/lib/equipment-print-columns";
 import { EquipmentPrintColumns } from "@/components/equipment-print-columns";
 import { Printer, Search } from "lucide-react";
 import { PmDueBadge } from "@/components/pm-due-badge";
+import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -314,6 +315,7 @@ export default async function EquipmentPage({
                 <th>Dept</th>
                 <th>PM</th>
                 <th>Next Due</th>
+                <th>Cycle Start</th>
                 <th>Risk</th>
                 <th>Status</th>
               </tr>
@@ -354,6 +356,7 @@ export default async function EquipmentPage({
                   <td>
                     <PmDueBadge pmNextDue={e.pmNextDue} compact />
                   </td>
+                  <td>{e.pmCycleStart ? formatDate(e.pmCycleStart) : "—"}</td>
                   <td>{e.risk || "—"}</td>
                   <td>
                     <StatusBadge status={e.status} />

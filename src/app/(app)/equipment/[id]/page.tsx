@@ -61,6 +61,12 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
             <PmDueBadge pmNextDue={equipment.pmNextDue} />
           </span>
         ) : null}
+        {equipment.pmCycleStart ? (
+          <span className="inline-flex items-center gap-1.5 text-sm text-slate-600">
+            <span className="text-slate-400">PM cycle start</span>
+            <span className="font-medium text-slate-700">{formatDate(equipment.pmCycleStart)}</span>
+          </span>
+        ) : null}
         {equipment.risk ? (
           <span className="badge bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-600/15">
             Risk {equipment.risk}
@@ -88,6 +94,7 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
           techAssigned1: equipment.techAssigned1,
           pmNextDue: equipment.pmNextDue,
           pmLastCompleted: equipment.pmLastCompleted,
+          pmCycleStart: equipment.pmCycleStart,
           comments: equipment.comments,
           risk: equipment.risk,
         }}

@@ -33,6 +33,7 @@ export default async function CmListPage({
     tech: oneParam(raw.tech),
     page: oneParam(raw.page),
   });
+  const deletedWo = oneParam(raw.deleted)?.trim() || "";
 
   const where = buildWorkOrderWhere(organizationId, "CM", filters);
 
@@ -94,7 +95,20 @@ export default async function CmListPage({
               rel="noopener noreferrer"
               className="btn-secondary"
             >
-              <Printer className="h-4 w-4" /> Print this list
+              <Printer className="h-4 w-4" />
+
+      {deletedWo ? (
+        <div
+          role="status"
+          className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
+        >
+          <p className="font-medium">Open CM work order deleted</p>
+          <p className="mt-1">
+            CM #{deletedWo} was removed. The equipment record was not changed.
+          </p>
+        </div>
+      ) : null}
+ Print this list
             </a>
             <Link href="/cm-work-orders/blank/print" className="btn-secondary">
               <FilePlus className="h-4 w-4" /> Blank form

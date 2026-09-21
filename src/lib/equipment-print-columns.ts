@@ -18,7 +18,8 @@ export type EquipmentPrintColumnId =
   | "risk"
   | "building"
   | "equipOwner"
-  | "pmSchedule1";
+  | "pmSchedule1"
+  | "pmCycleStart";
 
 export type EquipmentPrintColumnDef = {
   id: EquipmentPrintColumnId;
@@ -42,6 +43,7 @@ export const EQUIPMENT_PRINT_COLUMNS: EquipmentPrintColumnDef[] = [
   { id: "building", label: "Building" },
   { id: "equipOwner", label: "Owner" },
   { id: "pmSchedule1", label: "PM Schedule" },
+  { id: "pmCycleStart", label: "PM Cycle Start" },
 ];
 
 const COLUMN_IDS = new Set(
@@ -152,6 +154,7 @@ export type EquipmentPrintRow = {
   building: string | null;
   equipOwner: string | null;
   pmSchedule1: string | null;
+  pmCycleStart?: Date | string | null;
   hospId: string | null;
   hospital?: { name: string } | null;
   department?: { name: string } | null;
@@ -192,6 +195,18 @@ export function equipmentPrintCellValue(
       return e.equipOwner || "—";
     case "pmSchedule1":
       return e.pmSchedule1 || "—";
+    case "pmCycleStart": {
+      if (!e.pmCycleStart) return "—";
+      const d =
+        typeof e.pmCycleStart === "string"
+          ? new Date(e.pmCycleStart)
+          : e.pmCycleStart;
+      if (Number.isNaN(d.getTime())) return "—";
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${m}/${day}/${y}`;
+    }
     default:
       return "—";
   }

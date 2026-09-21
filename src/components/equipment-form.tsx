@@ -21,6 +21,7 @@ type Equip = {
   techAssigned1?: string | null;
   pmNextDue?: Date | string | null;
   pmLastCompleted?: Date | string | null;
+  pmCycleStart?: Date | string | null;
   comments: string | null;
   risk: string | null;
 };
@@ -156,6 +157,18 @@ export function EquipmentForm({
           name="pmLastCompleted"
           defaultValue={toDateInputValue(equipment?.pmLastCompleted)}
         />
+      </div>
+      <div>
+        <label className="label">PM cycle start</label>
+        <input
+          className="input"
+          type="date"
+          name="pmCycleStart"
+          defaultValue={toDateInputValue(equipment?.pmCycleStart)}
+        />
+        <p className="mt-1 text-[11px] text-slate-400">
+          Anchor date for this equipment&apos;s PM program/cycle.
+        </p>
       </div>
       <div>
         <label className="label">Default tech code</label>

@@ -8,6 +8,7 @@ import {
 } from "@/lib/tenant";
 import { Search } from "lucide-react";
 import type { Prisma } from "@prisma/client";
+import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -103,6 +104,7 @@ export default async function CustomerInventoryPage({
                 <th>Location</th>
                 <th>Dept</th>
                 <th>PM</th>
+                <th>PM Cycle Start</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -133,6 +135,7 @@ export default async function CustomerInventoryPage({
                       "—"
                     )}
                   </td>
+                  <td>{e.pmCycleStart ? formatDate(e.pmCycleStart) : "—"}</td>
                   <td>
                     <StatusBadge status={e.status} />
                   </td>
