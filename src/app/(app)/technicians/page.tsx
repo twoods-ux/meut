@@ -116,9 +116,9 @@ export default async function TechniciansPage() {
       <form action={addCustomer} className="card mb-8 space-y-3">
         <h2 className="font-semibold">Add Customer Portal User</h2>
         <p className="text-sm text-slate-500">
-          Creates a read-only login for a facility contact. They see inventory
-          and work orders for the selected hospital only. Counts toward seat
-          limit.
+          Creates a portal login for a facility contact. They can view inventory
+          and work orders for the selected hospital, request CM work orders, and
+          view completed CM/PM reports. Counts toward seat limit.
         </p>
         {!license.canAddUser && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">

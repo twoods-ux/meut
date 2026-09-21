@@ -34,7 +34,7 @@ export default async function CustomerWorkOrderDetailPage({
     <div>
       <PageHeader
         title={`${wo.type} Work Order #${wo.woNumber}`}
-        subtitle={`${wo.equipment.controlNum} — ${wo.equipment.description || wo.equipment.model || ""} (view only)`}
+        subtitle={`${wo.equipment.controlNum} — ${wo.equipment.description || wo.equipment.model || ""}`}
         actions={
           <Link href="/portal/work-orders" className="btn-secondary">
             Back to work orders

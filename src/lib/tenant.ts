@@ -29,11 +29,11 @@ export async function requireOrgSession(): Promise<OrgSession> {
   };
 }
 
-/** Staff (supervisor / tech) only — customers are read-only portal users. */
+/** Staff (supervisor / tech) only — customers cannot use staff routes. */
 export async function requireStaffSession(): Promise<OrgSession> {
   const session = await requireOrgSession();
   if (session.role === "CUSTOMER") {
-    throw new Error("Customers have read-only access");
+    throw new Error("Customers cannot access staff actions");
   }
   return session;
 }

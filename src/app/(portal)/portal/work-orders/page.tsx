@@ -55,7 +55,12 @@ export default async function CustomerWorkOrdersPage({
     <div>
       <PageHeader
         title="Work orders"
-        subtitle={`CM and PM work orders for ${hospital?.name || "your facility"} (view only)`}
+        subtitle={`CM and PM work orders for ${hospital?.name || "your facility"}`}
+        actions={
+          <Link href="/portal/work-orders/new" className="btn-primary">
+            Request CM
+          </Link>
+        }
       />
 
       <div className="mb-4 flex flex-wrap gap-2">
@@ -131,7 +136,7 @@ export default async function CustomerWorkOrdersPage({
         </div>
       )}
       <p className="mt-3 text-xs text-slate-400">
-        Showing {wos.length} work order(s) · read-only
+        Showing {wos.length} work order(s)
       </p>
     </div>
   );

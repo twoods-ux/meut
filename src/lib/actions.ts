@@ -10,7 +10,11 @@ import {
   setLicenseTier,
 } from "./license-server";
 import { isLicenseTier, type LicenseTier } from "./license";
-import { requireStaffSession, slugifyOrgName } from "./tenant";
+import {
+  requireStaffSession,
+  requireCustomerSession,
+  slugifyOrgName,
+} from "./tenant";
 import { claimCheckoutSessionForOrg } from "./billing-sync";
 import { isBillingInterval } from "./billing";
 import {
@@ -217,7 +221,7 @@ export async function createTechnician(formData: FormData) {
   revalidatePath("/technicians");
 }
 
-/** Supervisor creates a read-only customer portal user linked to one hospital. */
+/** Supervisor creates a customer portal user linked to one hospital. */
 export async function createCustomerUser(formData: FormData) {
   const { organizationId, role: actorRole } = await requireStaffSession();
   if (actorRole !== "SUPERVISOR") {
@@ -358,6 +362,53 @@ export async function openCmWorkOrder(formData: FormData) {
   });
   revalidatePath("/cm-work-orders");
   revalidatePath("/quick-entry");
+  return { id: wo.id, woNumber: wo.woNumber, controlNum: eq.controlNum };
+}
+
+/** Customer portal: open a CM work order for equipment at their facility only. */
+export async function createCustomerCmWorkOrder(formData: FormData) {
+  const { organizationId, userId, hospitalId } = await requireCustomerSession();
+  const equipmentId = String(formData.get("equipmentId") || "").trim();
+  if (!equipmentId) throw new Error("Equipment is required");
+
+  const eq = await prisma.equipment.findFirst({
+    where: {
+      id: equipmentId,
+      organizationId,
+      hospitalId,
+    },
+  });
+  if (!eq) {
+    throw new Error("Equipment not found at your facility");
+  }
+
+  const workRequested = String(formData.get("workRequested") || "").trim();
+  if (!workRequested) throw new Error("Problem / description is required");
+
+  const priorityRaw = String(formData.get("priority") || "ROUTINE").trim().toUpperCase();
+  const allowedPriorities = new Set(["STAT", "URGENT", "ROUTINE"]);
+  const priority = allowedPriorities.has(priorityRaw) ? priorityRaw : "ROUTINE";
+
+  const woNumber = await nextWoNumber(organizationId);
+  const wo = await prisma.workOrder.create({
+    data: {
+      organizationId,
+      woNumber,
+      type: "CM",
+      status: "OPEN",
+      equipmentId: eq.id,
+      controlNum: eq.controlNum,
+      hospId: eq.hospId,
+      costCtr: eq.costCtr,
+      workRequested,
+      priority,
+      openedById: userId,
+    },
+  });
+
+  revalidatePath("/portal/work-orders");
+  revalidatePath("/portal/reports");
+  revalidatePath("/cm-work-orders");
   return { id: wo.id, woNumber: wo.woNumber, controlNum: eq.controlNum };
 }
 

@@ -59,9 +59,17 @@ export default async function CustomerEquipmentDetailPage({
         title={`Equipment ${equipment.controlNum}`}
         subtitle={equipment.description || "Equipment detail (view only)"}
         actions={
-          <Link href="/portal/inventory" className="btn-secondary">
-            Back to inventory
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={`/portal/work-orders/new?equipmentId=${equipment.id}`}
+              className="btn-primary"
+            >
+              Request CM
+            </Link>
+            <Link href="/portal/inventory" className="btn-secondary">
+              Back to inventory
+            </Link>
+          </div>
         }
       />
       <div className="mb-4 flex flex-wrap gap-3 text-sm">
