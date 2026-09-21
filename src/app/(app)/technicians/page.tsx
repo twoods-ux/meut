@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { PageHeader, StatusBadge } from "@/components/ui";
-import { createTechnician, createCustomerUser } from "@/lib/actions";
+import {
+  createTechnician,
+  createCustomerUserAction,
+} from "@/lib/actions";
 import { getLicenseState } from "@/lib/license-server";
 import { SEAT_UPGRADE_MESSAGE } from "@/lib/license";
 import Link from "next/link";
@@ -8,7 +11,11 @@ import { requireStaffSession } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
-export default async function TechniciansPage() {
+export default async function TechniciansPage({
+  searchParams,
+}: {
+  searchParams: { error?: string; created?: string };
+}) {
   const { organizationId } = await requireStaffSession();
   const [users, hospitals, license] = await Promise.all([
     prisma.user.findMany({
@@ -23,14 +30,12 @@ export default async function TechniciansPage() {
     getLicenseState(organizationId),
   ]);
 
+  const errorMessage = searchParams.error?.trim() || "";
+  const createdCustomer = searchParams.created === "customer";
+
   async function addTech(formData: FormData) {
     "use server";
     await createTechnician(formData);
-  }
-
-  async function addCustomer(formData: FormData) {
-    "use server";
-    await createCustomerUser(formData);
   }
 
   return (
@@ -50,6 +55,31 @@ export default async function TechniciansPage() {
           </div>
         }
       />
+
+      {errorMessage ? (
+        <div
+          role="alert"
+          className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
+        >
+          <p className="font-medium">Could not create customer portal user</p>
+          <p className="mt-1">{errorMessage}</p>
+        </div>
+      ) : null}
+      {createdCustomer ? (
+        <div
+          role="status"
+          className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
+        >
+          <p className="font-medium">Customer portal user created</p>
+          <p className="mt-1">
+            They can sign in at{" "}
+            <Link href="/login" className="font-semibold underline">
+              /login
+            </Link>{" "}
+            with the username and password you set.
+          </p>
+        </div>
+      ) : null}
 
       <form action={addTech} className="card mb-8 space-y-3">
         <h2 className="font-semibold">Add Technician</h2>
@@ -113,12 +143,13 @@ export default async function TechniciansPage() {
         </fieldset>
       </form>
 
-      <form action={addCustomer} className="card mb-8 space-y-3">
+      <form action={createCustomerUserAction} className="card mb-8 space-y-3">
         <h2 className="font-semibold">Add Customer Portal User</h2>
         <p className="text-sm text-slate-500">
           Creates a portal login for a facility contact. They can view inventory
           and work orders for the selected hospital, request CM work orders, and
-          view completed CM/PM reports. Counts toward seat limit.
+          view completed CM/PM reports. Counts toward seat limit. Supervisors
+          only.
         </p>
         {!license.canAddUser && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -134,7 +165,16 @@ export default async function TechniciansPage() {
         >
           <div>
             <label className="label">Username *</label>
-            <input className="input" name="username" required />
+            <input
+              className="input"
+              name="username"
+              required
+              minLength={2}
+              maxLength={64}
+              pattern="[A-Za-z0-9._\-]+"
+              title="Letters, numbers, period, underscore, or hyphen"
+              autoComplete="off"
+            />
           </div>
           <div>
             <label className="label">Full Name *</label>

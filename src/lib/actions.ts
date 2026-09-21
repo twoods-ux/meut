@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 import {
@@ -194,6 +195,21 @@ export async function updateEquipment(id: string, formData: FormData) {
   revalidatePath("/dashboard");
 }
 
+export type FormActionResult = { ok: true } | { ok: false; error: string };
+
+function actionErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return fallback;
+}
+
+function redirectTechnicians(opts: { error?: string; created?: string }) {
+  const params = new URLSearchParams();
+  if (opts.error) params.set("error", opts.error.slice(0, 300));
+  if (opts.created) params.set("created", opts.created);
+  const q = params.toString();
+  redirect(q ? `/technicians?${q}` : "/technicians");
+}
+
 export async function createTechnician(formData: FormData) {
   const { organizationId } = await requireStaffSession();
   await assertCanAddUser(organizationId);
@@ -221,43 +237,112 @@ export async function createTechnician(formData: FormData) {
   revalidatePath("/technicians");
 }
 
-/** Supervisor creates a customer portal user linked to one hospital. */
-export async function createCustomerUser(formData: FormData) {
-  const { organizationId, role: actorRole } = await requireStaffSession();
-  if (actorRole !== "SUPERVISOR") {
-    throw new Error("Only supervisors can add customer portal users");
+/**
+ * Supervisor creates a customer portal user linked to one hospital.
+ * Returns a result instead of throwing so production does not show Application error.
+ */
+export async function createCustomerUser(
+  formData: FormData
+): Promise<FormActionResult> {
+  try {
+    const { organizationId, role: actorRole } = await requireStaffSession();
+    if (actorRole !== "SUPERVISOR") {
+      return {
+        ok: false,
+        error: "Only supervisors can add customer portal users",
+      };
+    }
+
+    try {
+      await assertCanAddUser(organizationId);
+    } catch (error) {
+      return {
+        ok: false,
+        error: actionErrorMessage(error, "Seat limit reached. Upgrade your plan."),
+      };
+    }
+
+    const username = String(formData.get("username") || "").trim().toLowerCase();
+    const name = String(formData.get("name") || "").trim();
+    const password = String(formData.get("password") || "");
+    const hospitalId = String(formData.get("hospitalId") || "").trim();
+    if (!username || !name) {
+      return { ok: false, error: "Username and name are required" };
+    }
+    if (!/^[a-z0-9._-]{2,64}$/.test(username)) {
+      return {
+        ok: false,
+        error:
+          "Username must be 2–64 characters (letters, numbers, . _ - only)",
+      };
+    }
+    if (password.length < 6) {
+      return { ok: false, error: "Password must be at least 6 characters" };
+    }
+    if (!hospitalId) {
+      return { ok: false, error: "Select a facility for this customer user" };
+    }
+
+    const hospital = await prisma.hospital.findFirst({
+      where: { id: hospitalId, organizationId },
+    });
+    if (!hospital) {
+      return { ok: false, error: "Hospital not found in your organization" };
+    }
+
+    const existing = await prisma.user.findUnique({ where: { username } });
+    if (existing) {
+      return { ok: false, error: "Username already taken — choose another" };
+    }
+
+    const emailRaw = String(formData.get("email") || "").trim();
+    const email = emailRaw || null;
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return { ok: false, error: "Enter a valid email address or leave it blank" };
+    }
+
+    await prisma.user.create({
+      data: {
+        organizationId,
+        username,
+        name,
+        passwordHash: await bcrypt.hash(password, 10),
+        role: "CUSTOMER",
+        hospitalId: hospital.id,
+        jobTitle:
+          String(formData.get("jobTitle") || "Facility Contact").trim() ||
+          "Facility Contact",
+        email,
+        phone: String(formData.get("phone") || "").trim() || null,
+      },
+    });
+    revalidatePath("/technicians");
+    return { ok: true };
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return { ok: false, error: "Username already taken — choose another" };
+    }
+    console.error("createCustomerUser failed", error);
+    return {
+      ok: false,
+      error: actionErrorMessage(
+        error,
+        "Could not create customer portal user. Please try again."
+      ),
+    };
   }
-  await assertCanAddUser(organizationId);
-  const username = String(formData.get("username") || "").trim().toLowerCase();
-  const name = String(formData.get("name") || "").trim();
-  const password = String(formData.get("password") || "");
-  const hospitalId = String(formData.get("hospitalId") || "").trim();
-  if (!username || !name) throw new Error("Username and name required");
-  if (password.length < 6) throw new Error("Password must be at least 6 characters");
-  if (!hospitalId) throw new Error("Facility (hospital) required");
+}
 
-  const hospital = await prisma.hospital.findFirst({
-    where: { id: hospitalId, organizationId },
-  });
-  if (!hospital) throw new Error("Hospital not found in your organization");
-
-  const existing = await prisma.user.findUnique({ where: { username } });
-  if (existing) throw new Error("Username already taken");
-
-  await prisma.user.create({
-    data: {
-      organizationId,
-      username,
-      name,
-      passwordHash: await bcrypt.hash(password, 10),
-      role: "CUSTOMER",
-      hospitalId: hospital.id,
-      jobTitle: String(formData.get("jobTitle") || "Facility Contact") || "Facility Contact",
-      email: String(formData.get("email") || "") || null,
-      phone: String(formData.get("phone") || "") || null,
-    },
-  });
-  revalidatePath("/technicians");
+/** Form action for Technicians → Add Customer Portal User (friendly redirect UX). */
+export async function createCustomerUserAction(formData: FormData) {
+  const result = await createCustomerUser(formData);
+  if (!result.ok) {
+    redirectTechnicians({ error: result.error });
+  }
+  redirectTechnicians({ created: "customer" });
 }
 
 export async function updateTechnician(id: string, formData: FormData) {
