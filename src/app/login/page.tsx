@@ -20,6 +20,7 @@ function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const nextPath = safeNextPath(search.get("next"));
   const fromSignup = search.get("signup") === "1";
+  const idleLogout = search.get("reason") === "idle";
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -64,6 +65,11 @@ function LoginForm() {
           <p className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-center text-sm text-emerald-800 ring-1 ring-emerald-200">
             Organization created. Log in to complete Stripe checkout for your
             plan.
+          </p>
+        ) : null}
+        {idleLogout ? (
+          <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-center text-sm text-amber-900 ring-1 ring-amber-200">
+            Signed out due to inactivity
           </p>
         ) : null}
         <form onSubmit={onSubmit} className="space-y-4">
