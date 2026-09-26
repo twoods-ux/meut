@@ -26,6 +26,7 @@ import {
   type EquipmentPrintColumnId,
 } from "./equipment-print-columns";
 import { Prisma } from "@prisma/client";
+import { isMaintenanceMode, MAINTENANCE_MESSAGE } from "@/lib/maintenance";
 import {
   buildPmChecklist,
   bumpPmNextDue,
@@ -930,6 +931,10 @@ export async function signupOrganization(formData: FormData): Promise<
   | { ok: false; error: string }
 > {
   try {
+    if (isMaintenanceMode()) {
+      return { ok: false as const, error: MAINTENANCE_MESSAGE };
+    }
+
     const orgName = String(formData.get("orgName") || "").trim();
     const name = String(formData.get("name") || "").trim();
     const username = String(formData.get("username") || "")

@@ -1,6 +1,6 @@
 # Deploy MEUT on Railway (Postgres)
 
-App path: `harvestcems/modern` (this directory). Parent/ops handle `railway login` and the actual deploy; this doc is the checklist.
+App path: `Meut/modern` (this directory). Parent/ops handle `railway login` and the actual deploy; this doc is the checklist.
 
 ## Prerequisites
 
@@ -10,7 +10,7 @@ App path: `harvestcems/modern` (this directory). Parent/ops handle `railway logi
 ## One-time setup
 
 ```bash
-cd harvestcems/modern
+cd Meut/modern
 railway init          # create / link a project
 railway add           # add the Postgres plugin (or Add Plugin → PostgreSQL in dashboard)
 ```
@@ -79,3 +79,13 @@ See `docs/STRIPE.md` for full setup. After `npm run stripe:setup`, add to Railwa
 - `STRIPE_PRICE_PRO_MONTHLY` / `_ANNUAL`
 - `STRIPE_PRICE_ENTERPRISE_MONTHLY` / `_ANNUAL`
 - `STRIPE_PRICE_SEAT_MONTHLY` / `_ANNUAL`
+
+## Maintenance mode (pause public signups)
+
+To temporarily take the **public** site offline (block `/`, `/signup`, `/pricing`, and all `/api/billing/checkout`) while keeping creator/staff **login** and authenticated app/portal working:
+
+1. In Railway → **meut-web** (or linked service) → **Variables**, set `MEUT_MAINTENANCE_MODE=1` (or `true`).
+2. Redeploy or restart the service so middleware picks up the env.
+3. Verify: `https://meut.app/signup` and `/pricing` show the maintenance page; `https://meut.app/login` still works. `/terms` and `/privacy` stay reachable.
+
+To reopen: **unset** `MEUT_MAINTENANCE_MODE` (or set to `0` / `false`) and redeploy/restart. When unset, behavior is unchanged (site open).
