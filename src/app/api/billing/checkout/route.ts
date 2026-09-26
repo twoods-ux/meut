@@ -10,6 +10,7 @@ import {
 } from "@/lib/billing";
 import { getOrCreateStripeCustomer } from "@/lib/billing-sync";
 import { getAppUrl, getStripe } from "@/lib/stripe";
+import { isMaintenanceMode, MAINTENANCE_MESSAGE } from "@/lib/maintenance";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +34,12 @@ type Body = {
  * Signup flow → unauthenticated Checkout with plan metadata; success → /signup?session_id=
  */
 export async function POST(req: NextRequest) {
+  if (isMaintenanceMode()) {
+    return NextResponse.json(
+      { error: MAINTENANCE_MESSAGE, maintenance: true },
+      { status: 503 }
+    );
+  }
   try {
     const body = (await req.json()) as Body;
     const tier = parseCheckoutTier(body.tier);
