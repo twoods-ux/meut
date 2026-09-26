@@ -483,7 +483,7 @@ async function main() {
   console.log("                  alex / password         (TECH)");
   console.log("                  customer / password     (CUSTOMER @ Demo General Hospital)");
   console.log("  Org Acme Clinical: acme_admin / password (SUPERVISOR)");
-  console.log("  License: Demo=PROFESSIONAL, Acme=STARTER");
+  console.log("  License: Demo=CREATOR (no Stripe), Acme=STARTER (no Stripe — app access blocked)");
   console.log("  Isolation: Demo must NOT see ACME / Acme Memorial");
   console.log("  Customer portal: customer sees DEMO hospital only (not Northside / ACME)");
 }

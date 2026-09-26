@@ -19,7 +19,7 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const nextPath = safeNextPath(search.get("next"));
-  const fromSignup = search.get("signup") === "1";
+  const billingClaimed = search.get("billing") === "claimed";
   const idleLogout = search.get("reason") === "idle";
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
@@ -61,10 +61,9 @@ function LoginForm() {
         <p className="mb-7 text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
           Sign in to your account
         </p>
-        {fromSignup ? (
+        {billingClaimed ? (
           <p className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-center text-sm text-emerald-800 ring-1 ring-emerald-200">
-            Organization created. Log in to complete Stripe checkout for your
-            plan.
+            Organization created. Log in to continue.
           </p>
         ) : null}
         {idleLogout ? (
@@ -134,17 +133,10 @@ function LoginForm() {
         <p className="mt-4 text-center text-xs text-slate-400">
           New customer?{" "}
           <Link
-            href="/signup"
-            className="font-semibold text-brand-600 hover:text-brand-700 hover:underline"
-          >
-            Create an organization
-          </Link>
-          {" · "}
-          <Link
             href="/pricing"
             className="font-semibold text-brand-600 hover:text-brand-700 hover:underline"
           >
-            Pricing
+            Get started
           </Link>
         </p>
         <p className="mt-3 text-center text-xs text-slate-400">

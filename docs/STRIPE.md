@@ -41,10 +41,24 @@ Copy the printed `whsec_…` into `STRIPE_WEBHOOK_SECRET`.
 
 | Route | Purpose |
 |-------|---------|
-| `GET /pricing` | Public pricing (monthly/annual toggle) |
-| `POST /api/billing/checkout` | Checkout session (supervisor) or signup metadata |
+| `GET /pricing` | Public pricing. Logged-out plan buttons start Checkout |
+| `GET /signup` | After payment (`session_id`) creates the org. Without `session_id`, explains that payment is required |
+| `GET /billing/return` | Logged-in supervisor Checkout success: sync session, then Settings |
+| `POST /api/billing/checkout` | Supervisor Checkout, or logged-out pending-signup Checkout |
 | `POST /api/billing/portal` | Customer Portal (supervisor) |
 | `POST /api/webhooks/stripe` | Signature-verified sync → Organization |
+
+## Pay first
+
+Public customers pay before an organization exists.
+
+1. Logged-out **Get started** on `/pricing` calls `POST /api/billing/checkout` with no session. Metadata includes `pendingSignup=1`. Success URL is `/signup?checkout=success&tier=…&interval=…&session_id={CHECKOUT_SESSION_ID}`.
+2. `signupOrganization` refuses unless that session is complete, paid, and the subscription is billable (`active`, `trialing`, or `past_due`). Claim writes `stripeCustomerId`, `stripeSubscriptionId`, `stripeSubscriptionStatus`, and tier. If claim fails, the new org is deleted.
+3. `/signup` without `session_id` does not create an org.
+4. After login, staff and customer portal routes redirect to `/pricing?billing=required` when the org is not `CREATOR` and has no billable subscription. `CREATOR` (MEUT Demo / `tw`) is exempt. Seed Acme (`acme_admin`, STARTER, no Stripe) is blocked until a supervisor subscribes.
+5. A signed-in supervisor can still change plans from Pricing or Settings. That Checkout returns through `/billing/return`.
+
+`Organization.stripeSubscriptionStatus` is optional. Rows that already have a subscription id and a null status keep access until the next webhook writes a status.
 
 Webhook events handled: `checkout.session.completed`,
 `customer.subscription.updated`, `customer.subscription.deleted`.
@@ -74,6 +88,7 @@ After deploy, create the webhook endpoint in Stripe pointing at
 
 - `stripeCustomerId` (unique, optional)
 - `stripeSubscriptionId` (optional)
+- `stripeSubscriptionStatus` (optional; `active`, `trialing`, `past_due` are billable)
 - `billingInterval` (`MONTHLY` \| `ANNUAL` \| null)
 - `extraSeats` (Int, default 0)
 

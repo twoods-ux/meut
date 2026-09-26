@@ -26,7 +26,11 @@ function parseLastImport(summary: string | null | undefined): ImportMdbCounts | 
   }
 }
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams?: { billing?: string };
+}) {
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
   if (session.user?.role !== "SUPERVISOR") {
@@ -56,6 +60,12 @@ export default async function SettingsPage() {
         title="License & Plan"
         subtitle={`Organization: ${license.organizationName} — facility & seat capacity, Stripe billing (supervisors)`}
       />
+
+      {searchParams?.billing === "success" ? (
+        <p className="mb-6 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 ring-1 ring-emerald-200">
+          Subscription confirmed. This organization is active.
+        </p>
+      ) : null}
 
       <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="card">
@@ -195,6 +205,7 @@ export default async function SettingsPage() {
         </div>
       </div>
 
+      {license.creatorUnlimited ? null : (
       <div className="card">
         <h2 className="mb-1 font-semibold text-slate-900">Demo: switch plan</h2>
         <p className="mb-4 text-sm text-slate-500">
@@ -227,6 +238,7 @@ export default async function SettingsPage() {
           })}
         </div>
       </div>
+      )}
     </div>
   );
 }

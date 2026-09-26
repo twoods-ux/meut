@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { Prisma } from "@prisma/client";
 import { authOptions } from "./auth";
 import { prisma } from "./prisma";
+import { assertOrganizationBillable } from "./billing-gate";
 
 export type OrgSession = {
   userId: string;
@@ -31,9 +32,15 @@ export async function requireOrgSession(): Promise<OrgSession> {
   };
 }
 
+async function requireBillableOrgSession(): Promise<OrgSession> {
+  const session = await requireOrgSession();
+  await assertOrganizationBillable(session.organizationId);
+  return session;
+}
+
 /** Staff (supervisor / tech) only — customers cannot use staff routes. */
 export async function requireStaffSession(): Promise<OrgSession> {
-  const session = await requireOrgSession();
+  const session = await requireBillableOrgSession();
   if (session.role === "CUSTOMER") {
     throw new Error("Customers cannot access staff actions");
   }
@@ -44,7 +51,7 @@ export async function requireStaffSession(): Promise<OrgSession> {
 export async function requireCustomerSession(): Promise<
   OrgSession & { hospitalId: string }
 > {
-  const session = await requireOrgSession();
+  const session = await requireBillableOrgSession();
   if (session.role !== "CUSTOMER") {
     throw new Error("Customer portal access only");
   }

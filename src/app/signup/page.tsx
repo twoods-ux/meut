@@ -11,6 +11,7 @@ import {
   formatUsd,
   type BillingInterval,
 } from "@/lib/billing";
+import { PricingCards } from "@/components/billing/pricing-cards";
 import { SiteFooter } from "@/components/site-footer";
 
 function SignupForm() {
@@ -50,24 +51,61 @@ function SignupForm() {
       return;
     }
 
-    // If checkout already claimed (paid first), go to login
-    if (res.claimedCheckout) {
-      setLoading(false);
-      router.push("/login?billing=claimed");
-      router.refresh();
-      return;
-    }
-
-    // Otherwise: create Checkout for preferred plan (user must log in first for supervisor auth)
-    // Redirect to login with plan params; after login they can subscribe from Settings/Pricing.
-    // Better UX: send them to login then pricing with auto-checkout hint.
     setLoading(false);
-    const q = new URLSearchParams({
-      next: `/pricing?autocheckout=1&tier=${res.preferredTier}&interval=${res.preferredInterval}`,
-      signup: "1",
-    });
-    router.push(`/login?${q.toString()}`);
+    router.push("/login?billing=claimed");
     router.refresh();
+  }
+
+  if (!checkoutSessionId) {
+    return (
+      <div className="flex min-h-screen flex-col bg-[var(--background)]">
+        <header className="border-b border-slate-200/80 bg-white">
+          <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
+            <Link href="/login" className="flex items-center gap-3">
+              <Image
+                src="/meut-logo.png"
+                alt="M.E.U.T."
+                width={140}
+                height={48}
+                className="h-10 w-auto"
+                priority
+              />
+            </Link>
+            <Link
+              href="/login"
+              className="text-sm font-semibold text-slate-600 hover:text-slate-900"
+            >
+              Log in
+            </Link>
+          </div>
+        </header>
+        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-12 sm:px-6 sm:py-16">
+          <div className="mb-8 text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#4070D0]">
+              Create your organization
+            </p>
+            <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+              Payment is required to create an organization
+            </h1>
+            <p className="mx-auto mt-3 max-w-2xl text-slate-500">
+              Choose a plan to start secure checkout. After payment you will
+              return here to finish signup. No organization is created until
+              payment succeeds.
+            </p>
+            <p className="mt-3 text-sm text-slate-500">
+              <Link
+                href="/pricing"
+                className="font-semibold text-[#4070D0] hover:underline"
+              >
+                View pricing
+              </Link>
+            </p>
+          </div>
+          <PricingCards />
+        </main>
+        <SiteFooter />
+      </div>
+    );
   }
 
   return (
@@ -90,11 +128,15 @@ function SignupForm() {
         <p className="mb-2 text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
           Create your organization
         </p>
-        {search.get("tier") ? (
-          <p className="mb-4 rounded-lg bg-[#4070D0]/10 px-3 py-2 text-center text-sm text-[#2f56a8]">
-            Selected plan: <strong>{priceHint}</strong>
-          </p>
-        ) : null}
+        <p className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-center text-sm text-emerald-800 ring-1 ring-emerald-200">
+          Payment received. Create your organization to activate the subscription.
+          {search.get("tier") ? (
+            <>
+              {" "}
+              Plan: <strong>{priceHint}</strong>
+            </>
+          ) : null}
+        </p>
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
             <label className="label" htmlFor="orgName">
@@ -144,47 +186,7 @@ function SignupForm() {
               minLength={6}
             />
           </div>
-          <div>
-            <label className="label" htmlFor="tier">
-              Plan
-            </label>
-            <select
-              className="input"
-              id="tier"
-              name="tier"
-              defaultValue={
-                TIER_ORDER.includes(defaultTier) ? defaultTier : "STARTER"
-              }
-            >
-              {TIER_ORDER.map((id) => (
-                <option key={id} value={id}>
-                  {LICENSE_TIERS[id].name} (
-                  {LICENSE_TIERS[id].facilityCapLabel} fac /{" "}
-                  {LICENSE_TIERS[id].seatCapLabel} seats) —{" "}
-                  {formatUsd(BILLING_PRICES_USD[id].monthly)}/mo
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label" htmlFor="interval">
-              Billing interval
-            </label>
-            <select
-              className="input"
-              id="interval"
-              name="interval"
-              defaultValue={
-                defaultInterval === "ANNUAL" ? "ANNUAL" : "MONTHLY"
-              }
-            >
-              <option value="MONTHLY">Monthly</option>
-              <option value="ANNUAL">Annual (2 months free)</option>
-            </select>
-          </div>
-          {checkoutSessionId ? (
-            <input type="hidden" name="checkoutSessionId" value={checkoutSessionId} />
-          ) : null}
+          <input type="hidden" name="checkoutSessionId" value={checkoutSessionId} />
           {error ? (
             <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-rose-200">
               {error}

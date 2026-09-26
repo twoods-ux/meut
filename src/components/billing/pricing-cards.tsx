@@ -45,6 +45,7 @@ function PricingCardsInner({
 
   const isSupervisor = session?.user?.role === "SUPERVISOR";
   const isLoggedIn = status === "authenticated";
+  const sessionReady = status !== "loading";
 
   const saveLabel = useMemo(
     () => (interval === "ANNUAL" ? "2 months free" : null),
@@ -53,15 +54,14 @@ function PricingCardsInner({
 
   async function onCta(tier: SellableTier) {
     setError("");
+    if (!sessionReady) return;
     setBusy(tier);
     try {
-      if (isLoggedIn && isSupervisor) {
-        await startCheckout({ tier, interval });
-      } else if (isLoggedIn) {
+      if (isLoggedIn && !isSupervisor) {
         setError("Ask a supervisor to manage billing for your organization.");
       } else {
-        // Signup then checkout — carry plan in query
-        window.location.href = `/signup?tier=${tier}&interval=${interval}`;
+        // Logged out: pending-signup Checkout. Supervisor: Checkout for their org.
+        await startCheckout({ tier, interval });
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
@@ -188,7 +188,7 @@ function PricingCardsInner({
                   "mt-6 w-full py-2.5",
                   featured ? "btn-primary" : "btn-secondary"
                 )}
-                disabled={busy === id}
+                disabled={busy === id || !sessionReady}
                 onClick={() => onCta(id)}
               >
                 {busy === id
@@ -197,7 +197,7 @@ function PricingCardsInner({
                     ? "Subscribe"
                     : isLoggedIn
                       ? "Contact supervisor"
-                      : "Start free signup"}
+                      : "Get started"}
               </button>
             </div>
           );

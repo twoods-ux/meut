@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
+import { redirectIfBillingRequired } from "@/lib/billing-gate";
 import { Sidebar } from "@/components/sidebar";
 import { SiteFooter } from "@/components/site-footer";
 
@@ -9,6 +10,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!session) redirect("/login");
   if (!session.user?.organizationId) redirect("/login");
   if (session.user?.role === "CUSTOMER") redirect("/portal/inventory");
+  await redirectIfBillingRequired(session.user.organizationId);
   return (
     <div className="flex min-h-screen bg-[var(--background)] print:block print:bg-white">
       <div className="shrink-0 print:hidden">
