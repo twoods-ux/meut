@@ -23,6 +23,9 @@ model Organization {
   stripeCustomerId     String?  @unique
   /// Stripe Subscription id (sub_...)
   stripeSubscriptionId String?
+  /// Stripe subscription status (active, trialing, past_due, incomplete, ...).
+  /// Null on rows created before status was stored; those keep access when a subscription id is present.
+  stripeSubscriptionStatus String?
   /// MONTHLY | ANNUAL | null when not billed via Stripe
   billingInterval      String?
   /// Purchased seats beyond LICENSE_TIERS[tier].maxSeats

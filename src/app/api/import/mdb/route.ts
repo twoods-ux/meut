@@ -3,6 +3,7 @@ import path from "path";
 import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
+import { ensureOrganizationBillable } from "@/lib/billing-gate";
 import { importMdb, ImportMdbError } from "@/lib/import-mdb";
 
 export const runtime = "nodejs";
@@ -29,6 +30,10 @@ export async function POST(req: NextRequest) {
       { error: "No organization on session" },
       { status: 403 }
     );
+  }
+  const billing = await ensureOrganizationBillable(organizationId);
+  if (!billing.ok) {
+    return NextResponse.json({ error: billing.error }, { status: billing.status });
   }
 
   try {

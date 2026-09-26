@@ -10,7 +10,7 @@ import {
   assertCanActivateUser,
   setLicenseTier,
 } from "./license-server";
-import { isLicenseTier, type LicenseTier } from "./license";
+import { isLicenseTier } from "./license";
 import {
   requireStaffSession,
   requireCustomerSession,
@@ -18,8 +18,12 @@ import {
   resolveCustomerFacility,
   customerFacilityEquipmentWhere,
 } from "./tenant";
-import { claimCheckoutSessionForOrg } from "./billing-sync";
-import { isBillingInterval } from "./billing";
+import {
+  assertPendingSignupCheckoutAvailable,
+  claimCheckoutSessionForOrg,
+} from "./billing-sync";
+import { organizationHasAppAccess } from "./billing-access";
+import { isMaintenanceMode, MAINTENANCE_CHECKOUT_ERROR } from "./maintenance";
 import {
   mergeEquipmentPrintPrefs,
   sanitizeEquipmentPrintColumns,
@@ -910,53 +914,70 @@ export async function updateLicenseTier(formData: FormData) {
   }
   const tier = String(formData.get("tier") || "").trim();
   if (!isLicenseTier(tier)) throw new Error("Invalid plan tier");
+  const current = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { tier: true },
+  });
+  if (current?.tier === "CREATOR") {
+    throw new Error("Creator access is not changed from billing settings");
+  }
   await setLicenseTier(tier, organizationId);
   revalidatePath("/settings");
   revalidatePath("/facilities");
 }
 
+async function rollbackSignupOrganization(organizationId: string) {
+  await prisma.counter.deleteMany({ where: { id: `wo:${organizationId}` } });
+  await prisma.organization.delete({ where: { id: organizationId } }).catch((err) => {
+    console.error("[signup] rollback failed", organizationId, err);
+  });
+}
+
 /**
- * Public signup: create Organization + first SUPERVISOR user.
- * Default tier STARTER; optional trial PROFESSIONAL via form.
+ * Public signup: create Organization + first SUPERVISOR only after a completed
+ * pending-signup Checkout Session is claimed. Unpaid attempts do not leave an org.
  */
 export async function signupOrganization(formData: FormData): Promise<
-  | {
-      ok: true;
-      organizationId: string;
-      preferredTier: LicenseTier;
-      preferredInterval: "MONTHLY" | "ANNUAL";
-      claimedCheckout: boolean;
-    }
+  | { ok: true; organizationId: string }
   | { ok: false; error: string }
 > {
+  if (isMaintenanceMode()) {
+    return { ok: false, error: MAINTENANCE_CHECKOUT_ERROR };
+  }
+
+  const orgName = String(formData.get("orgName") || "").trim();
+  const name = String(formData.get("name") || "").trim();
+  const username = String(formData.get("username") || "")
+    .trim()
+    .toLowerCase();
+  const password = String(formData.get("password") || "");
+  const checkoutSessionId = String(
+    formData.get("checkoutSessionId") || ""
+  ).trim();
+
+  if (!checkoutSessionId) {
+    return {
+      ok: false,
+      error:
+        "Payment is required to create an organization. Choose a plan on the pricing page.",
+    };
+  }
+
+  if (!orgName || !name || !username || password.length < 6) {
+    return {
+      ok: false,
+      error: "Organization, name, username, and password (6+ chars) required",
+    };
+  }
+
+  const existingUser = await prisma.user.findUnique({ where: { username } });
+  if (existingUser) {
+    return { ok: false, error: "Username already taken" };
+  }
+
+  let orgId: string | null = null;
   try {
-    const orgName = String(formData.get("orgName") || "").trim();
-    const name = String(formData.get("name") || "").trim();
-    const username = String(formData.get("username") || "")
-      .trim()
-      .toLowerCase();
-    const password = String(formData.get("password") || "");
-    const tierRaw = String(formData.get("tier") || "STARTER").trim();
-    const preferredTier: LicenseTier = isLicenseTier(tierRaw) ? tierRaw : "STARTER";
-    const intervalRaw = String(formData.get("interval") || "MONTHLY").trim();
-    const preferredInterval = isBillingInterval(intervalRaw)
-      ? intervalRaw
-      : "MONTHLY";
-    const checkoutSessionId = String(
-      formData.get("checkoutSessionId") || ""
-    ).trim();
-
-    if (!orgName || !name || !username || password.length < 6) {
-      return {
-        ok: false,
-        error: "Organization, name, username, and password (6+ chars) required",
-      };
-    }
-
-    const existingUser = await prisma.user.findUnique({ where: { username } });
-    if (existingUser) {
-      return { ok: false, error: "Username already taken" };
-    }
+    await assertPendingSignupCheckoutAvailable(checkoutSessionId);
 
     let slug = slugifyOrgName(orgName);
     const slugTaken = await prisma.organization.findUnique({ where: { slug } });
@@ -965,13 +986,12 @@ export async function signupOrganization(formData: FormData): Promise<
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    // Start on STARTER until Stripe webhook / claim upgrades the tier
     const org = await prisma.$transaction(async (tx) => {
       const created = await tx.organization.create({
         data: {
           name: orgName,
           slug,
-          tier: checkoutSessionId ? preferredTier : "STARTER",
+          tier: "STARTER",
           active: true,
         },
       });
@@ -998,30 +1018,45 @@ export async function signupOrganization(formData: FormData): Promise<
       });
       return created;
     });
+    orgId = org.id;
 
-    let claimedCheckout = false;
-    if (checkoutSessionId) {
-      try {
-        await claimCheckoutSessionForOrg(org.id, checkoutSessionId);
-        claimedCheckout = true;
-      } catch (claimErr) {
-        console.error("[signup] claim checkout", claimErr);
-      }
+    await claimCheckoutSessionForOrg(org.id, checkoutSessionId);
+
+    const linked = await prisma.organization.findUnique({
+      where: { id: org.id },
+      select: {
+        tier: true,
+        stripeCustomerId: true,
+        stripeSubscriptionId: true,
+        stripeSubscriptionStatus: true,
+      },
+    });
+    if (
+      !linked?.stripeCustomerId ||
+      !linked.stripeSubscriptionId ||
+      !organizationHasAppAccess(linked)
+    ) {
+      throw new Error(
+        "Payment could not be applied, so the organization was not created."
+      );
     }
 
-    return {
-      ok: true,
-      organizationId: org.id,
-      preferredTier,
-      preferredInterval,
-      claimedCheckout,
-    };
+    return { ok: true, organizationId: org.id };
   } catch (e) {
     console.error("[signup]", e);
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : "Signup failed",
-    };
+    if (orgId) {
+      await rollbackSignupOrganization(orgId);
+    }
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002" && !orgId) {
+      return { ok: false, error: "Username already taken" };
+    }
+    const message =
+      e instanceof Prisma.PrismaClientKnownRequestError
+        ? "This payment could not be applied, so the organization was not created."
+        : e instanceof Error && e.message
+          ? e.message
+          : "Signup failed";
+    return { ok: false, error: message };
   }
 }
 

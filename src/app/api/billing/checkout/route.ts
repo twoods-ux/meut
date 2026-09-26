@@ -9,7 +9,10 @@ import {
   parseExtraSeats,
 } from "@/lib/billing";
 import { getOrCreateStripeCustomer } from "@/lib/billing-sync";
+import { organizationHasAppAccess } from "@/lib/billing-access";
+import { isCreatorTier } from "@/lib/license";
 import { getAppUrl, getStripe } from "@/lib/stripe";
+import { isMaintenanceMode, MAINTENANCE_CHECKOUT_ERROR } from "@/lib/maintenance";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -20,8 +23,6 @@ type Body = {
   extraSeats?: number | string;
   /** When buying only additional seats on an existing subscription */
   seatsOnly?: boolean;
-  /** Signup flow: attach org after create, or pass just-created org id */
-  organizationId?: string;
   customerEmail?: string;
   successPath?: string;
   cancelPath?: string;
@@ -29,10 +30,16 @@ type Body = {
 
 /**
  * POST /api/billing/checkout
- * Supervisor (auth) → Checkout for their org.
- * Signup flow → unauthenticated Checkout with plan metadata; success → /signup?session_id=
+ * Supervisor (auth) → Checkout for their org. Success returns through /billing/return.
+ * Logged-out signup → pendingSignup Checkout; success → /signup?session_id=
  */
 export async function POST(req: NextRequest) {
+  if (isMaintenanceMode()) {
+    return NextResponse.json(
+      { error: MAINTENANCE_CHECKOUT_ERROR },
+      { status: 503, headers: { "Retry-After": "86400" } }
+    );
+  }
   try {
     const body = (await req.json()) as Body;
     const tier = parseCheckoutTier(body.tier);
@@ -57,11 +64,9 @@ export async function POST(req: NextRequest) {
     const role = session?.user?.role;
     const sessionOrgId = session?.user?.organizationId;
 
-    let organizationId: string | null =
-      body.organizationId || sessionOrgId || null;
-    // sessionOrgId may be undefined on the JWT type
-
-    // Authenticated path: supervisors only (or tech blocked)
+    // Organization is taken from the signed-in supervisor only.
+    // Logged-out Checkout is always a pending signup (claimed after payment).
+    let organizationId: string | null = null;
     if (session?.user?.id) {
       if (role !== "SUPERVISOR") {
         return NextResponse.json(
@@ -76,10 +81,74 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
+    } else if (seatsOnly) {
+      return NextResponse.json(
+        { error: "Sign in as a supervisor to add seats" },
+        { status: 401 }
+      );
+    }
+
+    let orgHasAccess = false;
+    let orgName: string | null = null;
+    let orgRecord:
+      | {
+          name: string;
+          stripeSubscriptionId: string | null;
+          billingInterval: string | null;
+        }
+      | null = null;
+    if (organizationId) {
+      const org = await prisma.organization.findUnique({
+        where: { id: organizationId },
+      });
+      if (!org) {
+        return NextResponse.json(
+          { error: "Organization not found" },
+          { status: 404 }
+        );
+      }
+      if (isCreatorTier(org.tier)) {
+        return NextResponse.json(
+          { error: "Creator organizations are not billed through Stripe" },
+          { status: 400 }
+        );
+      }
+      orgHasAccess = organizationHasAppAccess(org);
+      orgName = org.name;
+      orgRecord = org;
     }
 
     const stripe = getStripe();
     const appUrl = getAppUrl();
+
+    if (seatsOnly && orgRecord?.stripeSubscriptionId) {
+      const sub = await stripe.subscriptions.retrieve(orgRecord.stripeSubscriptionId, {
+        expand: ["items.data.price"],
+      });
+      const seatPriceId = getSeatPriceId(
+        (orgRecord.billingInterval as "MONTHLY" | "ANNUAL") || interval
+      );
+      const existingSeat = sub.items.data.find((item) => {
+        const pid = typeof item.price === "string" ? item.price : item.price.id;
+        return pid === seatPriceId;
+      });
+      if (existingSeat) {
+        await stripe.subscriptionItems.update(existingSeat.id, {
+          quantity: (existingSeat.quantity ?? 0) + extraSeats,
+        });
+      } else {
+        await stripe.subscriptionItems.create({
+          subscription: orgRecord.stripeSubscriptionId,
+          price: seatPriceId,
+          quantity: extraSeats,
+        });
+      }
+      return NextResponse.json({
+        ok: true,
+        mode: "subscription_update",
+        message: "Seats added to subscription",
+      });
+    }
 
     const line_items: { price: string; quantity: number }[] = [];
 
@@ -115,52 +184,11 @@ export async function POST(req: NextRequest) {
     let customer: string | undefined;
     let customer_email: string | undefined;
 
-    if (organizationId) {
-      const org = await prisma.organization.findUnique({
-        where: { id: organizationId },
-      });
-      if (!org) {
-        return NextResponse.json(
-          { error: "Organization not found" },
-          { status: 404 }
-        );
-      }
-
-      // Seats-only on existing subscription: add/update seat item instead of new sub
-      if (seatsOnly && org.stripeSubscriptionId) {
-        const sub = await stripe.subscriptions.retrieve(org.stripeSubscriptionId, {
-          expand: ["items.data.price"],
-        });
-        const seatPriceId = getSeatPriceId(
-          (org.billingInterval as "MONTHLY" | "ANNUAL") || interval
-        );
-        const existingSeat = sub.items.data.find((item) => {
-          const pid = typeof item.price === "string" ? item.price : item.price.id;
-          return pid === seatPriceId;
-        });
-        if (existingSeat) {
-          await stripe.subscriptionItems.update(existingSeat.id, {
-            quantity: (existingSeat.quantity ?? 0) + extraSeats,
-          });
-        } else {
-          await stripe.subscriptionItems.create({
-            subscription: org.stripeSubscriptionId,
-            price: seatPriceId,
-            quantity: extraSeats,
-          });
-        }
-        // Webhook will sync extraSeats; return success without Checkout redirect
-        return NextResponse.json({
-          ok: true,
-          mode: "subscription_update",
-          message: "Seats added to subscription",
-        });
-      }
-
+    if (organizationId && orgRecord) {
       customer = await getOrCreateStripeCustomer({
         organizationId,
         email: session?.user?.email,
-        name: org.name,
+        name: orgName || undefined,
       });
     } else {
       // Public / signup Checkout — claim later via session_id
@@ -171,11 +199,13 @@ export async function POST(req: NextRequest) {
     const successPath =
       body.successPath ||
       (organizationId
-        ? "/settings?billing=success"
-        : "/signup?checkout=success&session_id={CHECKOUT_SESSION_ID}");
+        ? "/billing/return?session_id={CHECKOUT_SESSION_ID}"
+        : `/signup?checkout=success&tier=${tier}&interval=${interval}&session_id={CHECKOUT_SESSION_ID}`);
     const cancelPath =
       body.cancelPath ||
-      (organizationId ? "/settings?billing=cancel" : "/pricing?billing=cancel");
+      (organizationId && orgHasAccess
+        ? "/settings?billing=cancel"
+        : "/pricing?billing=cancel");
 
     const checkout = await stripe.checkout.sessions.create({
       mode: "subscription",

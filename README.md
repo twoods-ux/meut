@@ -48,7 +48,7 @@ Open http://localhost:3000
 
 Customer portal: `/portal` (inventory + work orders for that facility only).
 
-Sign up for a new tenant at `/signup`.
+New customers subscribe on `/pricing`, then finish signup. CREATOR demo logins (`supervisor`, `tw`, `tech`, `customer`) do not need Stripe. `acme_admin` is an unpaid STARTER org and is sent to pricing until a subscription is active. Set `MEUT_MAINTENANCE_MODE=1` to close public signup and checkout while login and the signed-in app stay up.
 
 ## Import legacy HarvestCEMS data
 
@@ -123,13 +123,13 @@ MEUT is sold as a **hosted, browser-only** product:
 - **You host** the Next.js app (and database). Customers only open a URL — **no customer download**, no Access runtime, no local install.
 - Each paying customer is one **`Organization`** (tenant). All hospitals, equipment, work orders, users, contracts, and license tier data are scoped by `organizationId`.
 - Session JWT includes `organizationId` + role; list/create/detail queries filter by that org so tenants cannot see each other’s data.
-- Signup (`/signup`) creates an organization + first supervisor (default **Starter**, optional trial **Professional**).
+- Signup (`/signup`) creates an organization and its first supervisor only after a completed Stripe Checkout session is claimed. Direct visits without payment show pricing instead of creating a free org.
 - Seed includes platform demo org **MEUT Demo** plus **Acme Clinical** for isolation checks.
 - Future production path: **Postgres** + Vercel/Railway + Stripe mapping subscriptions → `Organization.tier`. See `docs/HOSTING.md`.
 
 ## License tiers (sellable plans)
 
-MEUT is sold by **facility (hospital) capacity** and **active user seats** **per organization**. Limits are defined in `src/lib/license.ts` and stored on `Organization.tier` (seed MEUT Demo: **Professional**).
+MEUT is sold by **facility (hospital) capacity** and **active user seats** **per organization**. Limits are defined in `src/lib/license.ts` and stored on `Organization.tier` (seed MEUT Demo: **Creator**, not billed in Stripe).
 
 | Plan | Facilities (hospitals) | Seats (active users) |
 |------|------------------------|----------------------|

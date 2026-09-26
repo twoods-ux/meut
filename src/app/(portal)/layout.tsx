@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { isBillingRequiredError } from "@/lib/billing-gate";
 import { requireCustomerSession } from "@/lib/tenant";
 import { CustomerSidebar } from "@/components/customer-sidebar";
 import { SiteFooter } from "@/components/site-footer";
@@ -12,7 +13,10 @@ export default async function PortalLayout({
   let session;
   try {
     session = await requireCustomerSession();
-  } catch {
+  } catch (error) {
+    if (isBillingRequiredError(error)) {
+      redirect("/pricing?billing=required&audience=customer");
+    }
     redirect("/login");
   }
 
