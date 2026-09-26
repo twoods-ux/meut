@@ -60,6 +60,19 @@ Public customers pay before an organization exists.
 
 `Organization.stripeSubscriptionStatus` is optional. Rows that already have a subscription id and a null status keep access until the next webhook writes a status.
 
+## Maintenance mode
+
+Set `MEUT_MAINTENANCE_MODE=1` or `true` (any other value, including unset, is off) and restart the app. No rebuild is required.
+
+While it is on:
+
+- Logged-out visitors to `/` and `/pricing`, and everyone on `/signup`, see a temporarily-unavailable page with a link to log in.
+- `POST /api/billing/checkout` returns **503**.
+- Public signup cannot create an organization.
+- `/login`, NextAuth, `/terms`, `/privacy`, and the signed-in staff app and customer portal keep working (including CREATOR).
+
+Turn the variable off and restart to reopen signup.
+
 Webhook events handled: `checkout.session.completed`,
 `customer.subscription.updated`, `customer.subscription.deleted`.
 
@@ -80,6 +93,7 @@ Set all of these on the MEUT service (in addition to `DATABASE_URL` / NextAuth):
 | `STRIPE_PRICE_ENTERPRISE_ANNUAL` | |
 | `STRIPE_PRICE_SEAT_MONTHLY` | |
 | `STRIPE_PRICE_SEAT_ANNUAL` | |
+| `MEUT_MAINTENANCE_MODE` | Optional. `1` or `true` closes public signup and checkout until go-live |
 
 After deploy, create the webhook endpoint in Stripe pointing at
 `/api/webhooks/stripe` and subscribe to the three events above.

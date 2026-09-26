@@ -1,7 +1,13 @@
 import Link from "next/link";
 import Image from "next/image";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { PricingCards } from "@/components/billing/pricing-cards";
+import { MaintenanceScreen } from "@/components/maintenance-screen";
 import { SiteFooter } from "@/components/site-footer";
+import { isMaintenanceMode } from "@/lib/maintenance";
+
+export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Pricing — M.E.U.T.",
@@ -38,11 +44,13 @@ function billingNotice(search: {
   return null;
 }
 
-export default function PricingPage({
+export default async function PricingPage({
   searchParams,
 }: {
   searchParams?: { billing?: string; audience?: string; error?: string };
 }) {
+  const session = await getServerSession(authOptions);
+  if (isMaintenanceMode() && !session) return <MaintenanceScreen />;
   const notice = billingNotice(searchParams ?? {});
   return (
     <div className="flex min-h-screen flex-col bg-[var(--background)]">

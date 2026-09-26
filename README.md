@@ -48,7 +48,7 @@ Open http://localhost:3000
 
 Customer portal: `/portal` (inventory + work orders for that facility only).
 
-New customers subscribe on `/pricing`, then finish signup. CREATOR demo logins (`supervisor`, `tw`, `tech`, `customer`) do not need Stripe. `acme_admin` is an unpaid STARTER org and is sent to pricing until a subscription is active.
+New customers subscribe on `/pricing`, then finish signup. CREATOR demo logins (`supervisor`, `tw`, `tech`, `customer`) do not need Stripe. `acme_admin` is an unpaid STARTER org and is sent to pricing until a subscription is active. Set `MEUT_MAINTENANCE_MODE=1` to close public signup and checkout while login and the signed-in app stay up.
 
 ## Import legacy HarvestCEMS data
 

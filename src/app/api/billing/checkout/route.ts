@@ -12,6 +12,7 @@ import { getOrCreateStripeCustomer } from "@/lib/billing-sync";
 import { organizationHasAppAccess } from "@/lib/billing-access";
 import { isCreatorTier } from "@/lib/license";
 import { getAppUrl, getStripe } from "@/lib/stripe";
+import { isMaintenanceMode, MAINTENANCE_CHECKOUT_ERROR } from "@/lib/maintenance";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +34,12 @@ type Body = {
  * Logged-out signup → pendingSignup Checkout; success → /signup?session_id=
  */
 export async function POST(req: NextRequest) {
+  if (isMaintenanceMode()) {
+    return NextResponse.json(
+      { error: MAINTENANCE_CHECKOUT_ERROR },
+      { status: 503, headers: { "Retry-After": "86400" } }
+    );
+  }
   try {
     const body = (await req.json()) as Body;
     const tier = parseCheckoutTier(body.tier);

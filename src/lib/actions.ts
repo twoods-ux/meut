@@ -23,6 +23,7 @@ import {
   claimCheckoutSessionForOrg,
 } from "./billing-sync";
 import { organizationHasAppAccess } from "./billing-access";
+import { isMaintenanceMode, MAINTENANCE_CHECKOUT_ERROR } from "./maintenance";
 import {
   mergeEquipmentPrintPrefs,
   sanitizeEquipmentPrintColumns,
@@ -940,6 +941,10 @@ export async function signupOrganization(formData: FormData): Promise<
   | { ok: true; organizationId: string }
   | { ok: false; error: string }
 > {
+  if (isMaintenanceMode()) {
+    return { ok: false, error: MAINTENANCE_CHECKOUT_ERROR };
+  }
+
   const orgName = String(formData.get("orgName") || "").trim();
   const name = String(formData.get("name") || "").trim();
   const username = String(formData.get("username") || "")
