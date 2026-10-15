@@ -8,8 +8,12 @@ import { redirect } from "next/navigation";
 import { requireOrgSession } from "@/lib/tenant";
 import { Printer } from "lucide-react";
 import { resolveRouteParams } from "@/lib/route-params";
-import { buildPmChecklist, normalizePmChecklist } from "@/lib/pm";
 import { PmChecklistEditor } from "@/components/pm-checklist";
+import { loadMatchTemplates } from "@/lib/pm-procedure-store";
+import {
+  checklistForWorkOrder,
+  procedureSourceLabel,
+} from "@/lib/pm-procedures";
 import { PmDueBadge } from "@/components/pm-due-badge";
 
 export const dynamic = "force-dynamic";
@@ -43,14 +47,30 @@ export default async function PmDetailPage({
   });
   if (!wo) notFound();
 
-  const checklist = (() => {
-    const existing = normalizePmChecklist(wo.pmChecklist);
-    if (existing.length > 0) return existing;
-    if (wo.status === "OPEN") {
-      return buildPmChecklist(wo.pmProc1 || wo.equipment.pmProc1);
-    }
-    return [];
-  })();
+  const templates = await loadMatchTemplates(prisma, organizationId);
+  const checklistView = checklistForWorkOrder({
+    status: wo.status,
+    pmChecklist: wo.pmChecklist,
+    pmProc1: wo.pmProc1,
+    equipmentPmProc1: wo.equipment.pmProc1,
+    description: wo.equipment.description,
+    manufacturer: wo.equipment.manufacturer,
+    model: wo.equipment.model,
+    pmTemplateId: wo.equipment.pmTemplateId,
+    templates,
+  });
+  const checklist = checklistView.items;
+  const sourceLabel = checklistView.fromSnapshot
+    ? wo.pmTemplateName
+      ? `Saved from ${wo.pmTemplateName}${wo.pmTemplateVersion != null ? ` (v${wo.pmTemplateVersion})` : ""}. Later edits to the library do not change this work order.`
+      : wo.pmProcedureSource === "CUSTOM"
+        ? "Saved from the equipment procedure."
+        : wo.pmProcedureSource === "GENERIC"
+          ? "Saved generic step."
+          : null
+    : checklistView.resolved
+      ? procedureSourceLabel(checklistView.resolved)
+      : null;
 
   async function saveChecklistAction(formData: FormData) {
     "use server";
@@ -190,10 +210,11 @@ export default async function PmDetailPage({
           <div>
             <h2 className="font-semibold">PM steps</h2>
             <p className="mb-3 text-xs text-slate-500">
-              Mark each step done (optional pass/fail per step). You still choose
-              overall Pass or Fail when you close the work order.
+              Pass/fail steps, readings, and notes are saved with this work order.
+              A reading outside its limit is flagged. Required steps must be filled
+              in before you close. You still choose overall Pass or Fail when you close.
             </p>
-            <PmChecklistEditor items={checklist} />
+            <PmChecklistEditor items={checklist} sourceLabel={sourceLabel} />
           </div>
 
           <div className="border-t border-slate-100 pt-4 space-y-4">
@@ -260,7 +281,7 @@ export default async function PmDetailPage({
         <>
           <div className="card mb-6 space-y-3">
             <h2 className="font-semibold">PM steps</h2>
-            <PmChecklistEditor items={checklist} readOnly />
+            <PmChecklistEditor items={checklist} readOnly sourceLabel={sourceLabel} />
           </div>
           <div className="card space-y-2 text-sm">
             <h2 className="font-semibold">Work Performed</h2>

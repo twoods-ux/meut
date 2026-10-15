@@ -7,6 +7,12 @@ import { EquipmentForm } from "@/components/equipment-form";
 import { formatDate } from "@/lib/utils";
 import { requireOrgSession } from "@/lib/tenant";
 import { resolveRouteParams } from "@/lib/route-params";
+import { loadMatchTemplates } from "@/lib/pm-procedure-store";
+import {
+  procedureSourceLabel,
+  resolvePmProcedure,
+} from "@/lib/pm-procedures";
+import { clearEquipmentPmTemplatePin } from "@/lib/pm-procedure-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +28,9 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
     },
   });
   if (!equipment) notFound();
+  const equipmentId = equipment.id;
+  const templates = await loadMatchTemplates(prisma, organizationId);
+  const procedure = resolvePmProcedure(equipment, templates);
   const [hospitals, departments] = await Promise.all([
     prisma.hospital.findMany({
       where: { organizationId },
@@ -34,6 +43,11 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
       select: { id: true, name: true, costCtr: true, hospitalId: true },
     }),
   ]);
+
+  async function clearPinAction() {
+    "use server";
+    await clearEquipmentPmTemplatePin(equipmentId);
+  }
 
   return (
     <div>
@@ -75,6 +89,30 @@ export default async function EquipmentDetailPage({ params }: { params: { id: st
         <span className="text-slate-500">
           {equipment.hospital?.name} · {equipment.department?.name || equipment.costCtr || "—"}
         </span>
+      </div>
+      <div className="card mb-4 text-sm">
+        <h2 className="font-semibold">PM procedure for new work orders</h2>
+        <p className="mt-1 text-slate-600">{procedureSourceLabel(procedure)}</p>
+        {procedure.templateId ? (
+          <p className="mt-2">
+            <Link href={`/pm-procedures/${procedure.templateId}`} className="link-brand">
+              Open procedure
+            </Link>
+          </p>
+        ) : (
+          <p className="mt-2">
+            <Link href="/pm-procedures" className="link-brand">
+              PM procedure library
+            </Link>
+          </p>
+        )}
+        {equipment.pmTemplateId ? (
+          <form action={clearPinAction} className="mt-3">
+            <button type="submit" className="btn-secondary">
+              Remove library pin
+            </button>
+          </form>
+        ) : null}
       </div>
       <EquipmentForm
         equipment={{

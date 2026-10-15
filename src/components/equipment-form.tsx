@@ -190,6 +190,7 @@ export function EquipmentForm({
         />
         <p className="mt-1 text-[11px] text-slate-400">
           Each line becomes a step on the PM work order when you generate PMs.
+          Leave this blank to use the matching procedure from the PM procedure library.
         </p>
       </div>
       <div className="md:col-span-2">

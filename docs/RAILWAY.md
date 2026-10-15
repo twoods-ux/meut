@@ -37,8 +37,10 @@ After the first deploy, set `NEXTAUTH_URL` to the Railway-generated domain (or c
 ### Build & start (already in `railway.toml`)
 
 - **Build:** `npm ci && npx prisma generate && npm run build`
-- **Start:** `npx prisma db push && npm run start`
-  - MVP uses `db push` (no migration history yet). Switch to `prisma migrate deploy` once you add migrations.
+- **Start:** `sh scripts/boot.sh` (`prisma db push`, then start)
+  - `db push` applies the schema, including the additive PM procedure library tables. Existing equipment and work orders are not rewritten.
+  - Boot then runs `scripts/seed-pm-procedures.ts`, which only inserts missing starter templates. It does not delete data and does not overwrite procedures staff have edited.
+  - `prisma/migrations/20261015120000_pm_procedure_library` is the same additive change. Do not switch this service to `migrate deploy` until a full baseline migration exists; deploy continues to use `db push`.
 - **Listen:** `next start -H 0.0.0.0 -p ${PORT:-3000}` (Railway sets `PORT`)
 
 ### Deploy
