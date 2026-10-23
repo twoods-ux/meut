@@ -9,6 +9,8 @@
  *   A / Annual / Yearly → +12 months
  * - Otherwise default to +1 month from the close date.
  * - Sets equipment.pmLastCompleted = close date and pmNextDue = bumped date.
+ * - Reopening that Pass undoes this stamp (see src/lib/work-order-reopen.ts).
+ *   Closing again stamps from the new close date and does not add a second interval.
  */
 
 export type PmStepResult = "PASS" | "FAIL" | null;

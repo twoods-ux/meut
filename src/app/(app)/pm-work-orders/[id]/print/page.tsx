@@ -12,6 +12,11 @@ import { PmChecklistPrint } from "@/components/pm-checklist";
 import { loadMatchTemplates } from "@/lib/pm-procedure-store";
 import { checklistForWorkOrder } from "@/lib/pm-procedures";
 import { resolveRouteParams } from "@/lib/route-params";
+import { WORK_ORDER_REOPEN_EVENT } from "@/lib/work-order-reopen";
+import {
+  WorkOrderReopenHistoryPrint,
+  reopenHistoryFromEvents,
+} from "@/components/work-order-reopen";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +39,11 @@ export default async function PmWorkOrderPrintPage({
       assignedTech: true,
       openedBy: true,
       closedBy: true,
+      events: {
+        where: { type: WORK_ORDER_REOPEN_EVENT, organizationId },
+        orderBy: { createdAt: "asc" },
+        include: { actor: { select: { name: true } } },
+      },
     },
   });
   if (!wo) notFound();
@@ -144,6 +154,8 @@ export default async function PmWorkOrderPrintPage({
         ) : null}
 
         <PrintBlock label="Comments" value={wo.comments} blankLines={3} />
+
+        <WorkOrderReopenHistoryPrint events={reopenHistoryFromEvents(wo.events)} />
 
         <div className="print-sign-line">
           <div className="line">Technician signature / date</div>
