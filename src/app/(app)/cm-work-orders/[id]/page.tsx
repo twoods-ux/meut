@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader, StatusBadge } from "@/components/ui";
-import { closeWorkOrder, deleteOpenWorkOrder } from "@/lib/actions";
+import { closeWorkOrder, deleteOpenWorkOrder, reopenWorkOrder } from "@/lib/actions";
 import { redirect } from "next/navigation";
 import { requireOrgSession } from "@/lib/tenant";
 import { Printer } from "lucide-react";
@@ -10,6 +10,12 @@ import { resolveRouteParams, oneParam } from "@/lib/route-params";
 import { WorkOrderDatesForm } from "@/components/work-order-dates-form";
 import { DateTimeField } from "@/components/date-time-field";
 import { toDateTimeLocalValue } from "@/lib/utils";
+import {
+  ReopenWorkOrderCard,
+  WorkOrderReopenHistory,
+  reopenHistoryFromEvents,
+} from "@/components/work-order-reopen";
+import { canShowReopenWorkOrder, WORK_ORDER_REOPEN_EVENT } from "@/lib/work-order-reopen";
 
 export const dynamic = "force-dynamic";
 
@@ -27,8 +33,10 @@ export default async function CmDetailPage({
   const errorMessage = (oneParam(rawSp.error) || "").trim().slice(0, 300);
   const closeError = (oneParam(rawSp.closeError) || "").trim().slice(0, 300);
   const dateError = (oneParam(rawSp.dateError) || "").trim().slice(0, 300);
+  const reopenError = (oneParam(rawSp.reopenError) || "").trim().slice(0, 300);
   const savedDates = oneParam(rawSp.saved) === "dates";
-  const { organizationId } = await requireOrgSession();
+  const reopened = oneParam(rawSp.reopened) === "1";
+  const { organizationId, role } = await requireOrgSession();
   const wo = await prisma.workOrder.findFirst({
     where: { id: routeId, organizationId },
     include: {
@@ -36,6 +44,11 @@ export default async function CmDetailPage({
       assignedTech: true,
       openedBy: true,
       closedBy: true,
+      events: {
+        where: { type: WORK_ORDER_REOPEN_EVENT, organizationId },
+        orderBy: { createdAt: "asc" },
+        include: { actor: { select: { name: true } } },
+      },
     },
   });
   if (!wo || wo.type !== "CM") notFound();
@@ -52,6 +65,17 @@ export default async function CmDetailPage({
       );
     }
     redirect(`/cm-work-orders/${routeId}`);
+  }
+
+  async function reopenAction(formData: FormData) {
+    "use server";
+    const result = await reopenWorkOrder(routeId, formData);
+    if (!result.ok) {
+      redirect(
+        `/cm-work-orders/${routeId}?reopenError=${encodeURIComponent(result.error.slice(0, 300))}`
+      );
+    }
+    redirect(`/cm-work-orders/${routeId}?reopened=1`);
   }
 
   async function deleteAction(formData: FormData) {
@@ -130,6 +154,26 @@ export default async function CmDetailPage({
           </p>
         </div>
       ) : null}
+      {reopenError ? (
+        <div
+          role="alert"
+          className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
+        >
+          <p className="font-medium">Could not reopen work order</p>
+          <p className="mt-1">{reopenError}</p>
+        </div>
+      ) : null}
+      {reopened ? (
+        <div
+          role="status"
+          className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
+        >
+          <p className="font-medium">Work order reopened</p>
+          <p className="mt-1">
+            Correct the work performed, then close the CM again.
+          </p>
+        </div>
+      ) : null}
       <div className="mb-4 flex flex-wrap gap-3">
         <StatusBadge status={wo.status} />
         <span className="badge bg-amber-100 text-amber-800">{wo.priority || "ROUTINE"}</span>
@@ -168,15 +212,21 @@ export default async function CmDetailPage({
           <h2 className="font-semibold">Close CM Work Order</h2>
           <div>
             <label className="label">Work Performed *</label>
-            <textarea className="input" name="workPerformed" rows={4} required />
+            <textarea
+              className="input"
+              name="workPerformed"
+              rows={4}
+              required
+              defaultValue={wo.workPerformed || ""}
+            />
           </div>
           <div>
             <label className="label">Labor Hours *</label>
-            <input className="input max-w-[160px]" name="laborHours" type="number" step="0.25" min="0" required defaultValue="1" />
+            <input className="input max-w-[160px]" name="laborHours" type="number" step="0.25" min="0" required defaultValue={wo.laborHours ?? 1} />
           </div>
           <div>
             <label className="label">Comments</label>
-            <textarea className="input" name="comments" rows={2} />
+            <textarea className="input" name="comments" rows={2} defaultValue={wo.comments || ""} />
           </div>
           <DateTimeField
             id="cm-date-closed"
@@ -197,6 +247,18 @@ export default async function CmDetailPage({
         </div>
       )}
 
+      <WorkOrderReopenHistory events={reopenHistoryFromEvents(wo.events)} />
+
+      {canShowReopenWorkOrder(role, wo.status) ? (
+        <ReopenWorkOrderCard
+          action={reopenAction}
+          woNumber={wo.woNumber}
+          controlNum={wo.equipment.controlNum}
+          type="CM"
+          className="mt-6 max-w-2xl"
+        />
+      ) : null}
+
       {wo.status === "OPEN" ? (
         <form
           action={deleteAction}
@@ -206,6 +268,9 @@ export default async function CmDetailPage({
           <p className="text-xs text-slate-600">
             Removes this open CM only. The equipment record is not deleted. Closed
             CMs cannot be removed.
+            {wo.events.length > 0
+              ? " This work order was reopened. Deleting it also removes the reopen history."
+              : ""}
           </p>
           <label className="flex items-start gap-2 text-sm text-slate-700">
             <input

@@ -2,7 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader, StatusBadge } from "@/components/ui";
-import { closeWorkOrder, savePmChecklist, deleteOpenWorkOrder } from "@/lib/actions";
+import {
+  closeWorkOrder,
+  savePmChecklist,
+  deleteOpenWorkOrder,
+  reopenWorkOrder,
+} from "@/lib/actions";
 import { formatDate, toDateTimeLocalValue } from "@/lib/utils";
 import { redirect } from "next/navigation";
 import { requireOrgSession } from "@/lib/tenant";
@@ -17,6 +22,12 @@ import {
   procedureSourceLabel,
 } from "@/lib/pm-procedures";
 import { PmDueBadge } from "@/components/pm-due-badge";
+import {
+  ReopenWorkOrderCard,
+  WorkOrderReopenHistory,
+  reopenHistoryFromEvents,
+} from "@/components/work-order-reopen";
+import { canShowReopenWorkOrder, WORK_ORDER_REOPEN_EVENT } from "@/lib/work-order-reopen";
 
 export const dynamic = "force-dynamic";
 
@@ -34,8 +45,10 @@ export default async function PmDetailPage({
   const errorMessage = (oneParam(rawSp.error) || "").trim().slice(0, 300);
   const closeError = (oneParam(rawSp.closeError) || "").trim().slice(0, 300);
   const dateError = (oneParam(rawSp.dateError) || "").trim().slice(0, 300);
+  const reopenError = (oneParam(rawSp.reopenError) || "").trim().slice(0, 300);
   const savedDates = oneParam(rawSp.saved) === "dates";
-  const { organizationId } = await requireOrgSession();
+  const reopened = oneParam(rawSp.reopened) === "1";
+  const { organizationId, role } = await requireOrgSession();
   const wo = await prisma.workOrder.findFirst({
     where: { id: routeId, organizationId, type: "PM" },
     include: {
@@ -43,6 +56,11 @@ export default async function PmDetailPage({
       assignedTech: true,
       openedBy: true,
       closedBy: true,
+      events: {
+        where: { type: WORK_ORDER_REOPEN_EVENT, organizationId },
+        orderBy: { createdAt: "asc" },
+        include: { actor: { select: { name: true } } },
+      },
     },
   });
   if (!wo) notFound();
@@ -90,6 +108,17 @@ export default async function PmDetailPage({
       );
     }
     redirect(`/pm-work-orders/${routeId}`);
+  }
+
+  async function reopenAction(formData: FormData) {
+    "use server";
+    const result = await reopenWorkOrder(routeId, formData);
+    if (!result.ok) {
+      redirect(
+        `/pm-work-orders/${routeId}?reopenError=${encodeURIComponent(result.error.slice(0, 300))}`
+      );
+    }
+    redirect(`/pm-work-orders/${routeId}?reopened=1`);
   }
 
   async function deleteAction(formData: FormData) {
@@ -166,6 +195,26 @@ export default async function PmDetailPage({
           <p className="font-medium">Work order dates saved</p>
           <p className="mt-1">
             Lists and reports use these opened and closed dates.
+          </p>
+        </div>
+      ) : null}
+      {reopenError ? (
+        <div
+          role="alert"
+          className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
+        >
+          <p className="font-medium">Could not reopen work order</p>
+          <p className="mt-1">{reopenError}</p>
+        </div>
+      ) : null}
+      {reopened ? (
+        <div
+          role="status"
+          className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
+        >
+          <p className="font-medium">Work order reopened</p>
+          <p className="mt-1">
+            Checklist steps are still here. Correct them, then close the PM again.
           </p>
         </div>
       ) : null}
@@ -270,7 +319,7 @@ export default async function PmDetailPage({
                 className="input"
                 name="workPerformed"
                 rows={3}
-                defaultValue="PM completed per procedure"
+                defaultValue={wo.workPerformed || "PM completed per procedure"}
               />
             </div>
             <div>
@@ -281,12 +330,17 @@ export default async function PmDetailPage({
                 type="number"
                 step="0.25"
                 min="0"
-                defaultValue="0.5"
+                defaultValue={wo.laborHours ?? 0.5}
               />
             </div>
             <div>
               <label className="label">Comments</label>
-              <textarea className="input" name="comments" rows={2} />
+              <textarea
+                className="input"
+                name="comments"
+                rows={2}
+                defaultValue={wo.comments || ""}
+              />
             </div>
             <DateTimeField
               id="pm-date-closed"
@@ -341,6 +395,17 @@ export default async function PmDetailPage({
         </>
       )}
 
+      <WorkOrderReopenHistory events={reopenHistoryFromEvents(wo.events)} />
+
+      {canShowReopenWorkOrder(role, wo.status) ? (
+        <ReopenWorkOrderCard
+          action={reopenAction}
+          woNumber={wo.woNumber}
+          controlNum={wo.equipment.controlNum}
+          type="PM"
+        />
+      ) : null}
+
       {wo.status === "OPEN" ? (
         <form
           action={deleteAction}
@@ -350,6 +415,9 @@ export default async function PmDetailPage({
           <p className="text-xs text-slate-600">
             Use this if a PM was generated by mistake. The equipment record is not
             deleted. Closed PMs cannot be removed.
+            {wo.events.length > 0
+              ? " This work order was reopened. Deleting it also removes the reopen history."
+              : ""}
           </p>
           <label className="flex items-start gap-2 text-sm text-slate-700">
             <input

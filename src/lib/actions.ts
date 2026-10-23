@@ -27,7 +27,6 @@ import {
 } from "./equipment-print-columns";
 import { Prisma } from "@prisma/client";
 import {
-  bumpPmNextDue,
   checklistFromFormData,
   missingRequiredPmSteps,
   normalizePmChecklist,
@@ -41,6 +40,14 @@ import {
 } from "./pm-procedure-store";
 import { equipmentLookupWhere } from "./equipment-lookup";
 import { parseDateTimeLocal, workOrderCloseBeforeOpen } from "./utils";
+import {
+  WORK_ORDER_REOPEN_EVENT,
+  equipmentPmDatesAfterReopen,
+  passClosePmStamp,
+  shouldApplyPassCloseStamp,
+  validateReopenRequest,
+  reopenWorkOrderData,
+} from "./work-order-reopen";
 
 function procedureSnapshot(resolved: ResolvedPmProcedure): {
   pmChecklist: Prisma.InputJsonValue;
@@ -763,17 +770,20 @@ export async function closeWorkOrder(id: string, formData: FormData) {
     },
   });
 
-  // On Pass: stamp last completed and bump next due (see src/lib/pm.ts).
+  // On Pass: stamp last completed and next due from this close date (one interval).
+  // A later Pass replaces that stamp. Re-closing an older PM does not move the
+  // stamp backward and does not add another interval on top of it.
   if (existing.type === "PM" && pmResult === "PASS") {
     const schedule =
       existing.pmSchedule1 || existing.equipment.pmSchedule1 || null;
-    await prisma.equipment.update({
-      where: { id: existing.equipmentId },
-      data: {
-        pmLastCompleted: dateClosed,
-        pmNextDue: bumpPmNextDue(dateClosed, schedule),
-      },
-    });
+    if (
+      shouldApplyPassCloseStamp(dateClosed, existing.equipment.pmLastCompleted)
+    ) {
+      await prisma.equipment.update({
+        where: { id: existing.equipmentId },
+        data: passClosePmStamp(dateClosed, schedule),
+      });
+    }
   }
 
   revalidatePath("/cm-work-orders");
@@ -787,6 +797,172 @@ export async function closeWorkOrder(id: string, formData: FormData) {
   revalidatePath("/reports");
   revalidatePath("/quick-close");
   revalidatePath("/quick-entry");
+}
+
+/**
+ * Supervisor-only: return a CLOSED PM or CM work order to OPEN.
+ * Clears the close date and overall pass/fail result. Checklist steps,
+ * readings, and notes stay so they can be corrected and closed again.
+ * Records who reopened it, when, and why.
+ */
+export async function reopenWorkOrder(
+  id: string,
+  formData: FormData
+): Promise<FormActionResult> {
+  try {
+    const session = await requireStaffSession();
+    const actor = await prisma.user.findFirst({
+      where: { id: session.userId, organizationId: session.organizationId },
+      select: { role: true },
+    });
+    const role =
+      session.role === "SUPERVISOR" && actor?.role === "SUPERVISOR"
+        ? "SUPERVISOR"
+        : "TECH";
+    if (role !== "SUPERVISOR") {
+      return {
+        ok: false,
+        error: "Only supervisors can reopen a closed work order",
+      };
+    }
+
+    const outcome = await prisma.$transaction(async (tx) => {
+      const existing = await tx.workOrder.findFirst({
+        where: { id, organizationId: session.organizationId },
+        include: {
+          equipment: {
+            select: {
+              id: true,
+              pmSchedule1: true,
+              pmLastCompleted: true,
+              pmNextDue: true,
+            },
+          },
+        },
+      });
+      const decision = validateReopenRequest({
+        role,
+        sessionOrganizationId: session.organizationId,
+        workOrder: existing
+          ? {
+              organizationId: existing.organizationId,
+              type: existing.type,
+              status: existing.status,
+            }
+          : null,
+        reason: String(formData.get("reason") || ""),
+        confirmed: formData.get("confirmReopen") === "yes",
+      });
+      if (!decision.ok) return decision;
+      if (!existing) {
+        return { ok: false as const, error: "Work order not found" };
+      }
+
+      const schedule = existing.pmSchedule1 || existing.equipment.pmSchedule1 || null;
+      let equipmentUpdate: {
+        pmLastCompleted: Date | null;
+        pmNextDue: Date | null;
+      } | null = null;
+      if (existing.type === "PM" && existing.pmResult === "PASS" && existing.dateClosed) {
+        const others = await tx.workOrder.findMany({
+          where: {
+            organizationId: session.organizationId,
+            equipmentId: existing.equipmentId,
+            type: "PM",
+            status: "CLOSED",
+            pmResult: "PASS",
+            id: { not: existing.id },
+            NOT: { dateClosed: null },
+          },
+          select: { dateClosed: true, pmSchedule1: true },
+        });
+        const dates = equipmentPmDatesAfterReopen({
+          type: existing.type,
+          pmResult: existing.pmResult,
+          dateClosed: existing.dateClosed,
+          schedule,
+          current: {
+            pmLastCompleted: existing.equipment.pmLastCompleted,
+            pmNextDue: existing.equipment.pmNextDue,
+          },
+          otherPassCloses: others.flatMap((row) =>
+            row.dateClosed
+              ? [
+                  {
+                    dateClosed: row.dateClosed,
+                    schedule: row.pmSchedule1 || existing.equipment.pmSchedule1 || null,
+                  },
+                ]
+              : []
+          ),
+        });
+        if (dates.changed) equipmentUpdate = dates.next;
+      }
+
+      const updated = await tx.workOrder.updateMany({
+        where: {
+          id: existing.id,
+          organizationId: session.organizationId,
+          status: "CLOSED",
+        },
+        data: reopenWorkOrderData(),
+      });
+      if (updated.count !== 1) {
+        return { ok: false as const, error: "Work order is no longer closed" };
+      }
+
+      await tx.workOrderEvent.create({
+        data: {
+          organizationId: session.organizationId,
+          workOrderId: existing.id,
+          type: WORK_ORDER_REOPEN_EVENT,
+          actorId: session.userId,
+          reason: decision.reason,
+        },
+      });
+
+      if (equipmentUpdate) {
+        await tx.equipment.update({
+          where: { id: existing.equipmentId },
+          data: equipmentUpdate,
+        });
+      }
+
+      return {
+        ok: true as const,
+        equipmentId: existing.equipmentId,
+        type: existing.type,
+      };
+    });
+
+    if (!outcome.ok) return outcome;
+
+    revalidatePath("/cm-work-orders");
+    revalidatePath("/pm-work-orders");
+    revalidatePath(`/cm-work-orders/${id}`);
+    revalidatePath(`/pm-work-orders/${id}`);
+    revalidatePath(`/cm-work-orders/${id}/print`);
+    revalidatePath(`/pm-work-orders/${id}/print`);
+    revalidatePath(`/equipment/${outcome.equipmentId}`);
+    revalidatePath("/equipment");
+    revalidatePath("/dashboard");
+    revalidatePath("/reports");
+    revalidatePath("/reports/print/cm");
+    revalidatePath("/reports/print/pm");
+    revalidatePath("/quick-close");
+    revalidatePath("/quick-entry");
+    revalidatePath("/portal/work-orders");
+    revalidatePath(`/portal/work-orders/${id}`);
+    revalidatePath("/portal/reports");
+    revalidatePath("/portal/inventory");
+    revalidatePath(`/portal/inventory/${outcome.equipmentId}`);
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: actionErrorMessage(error, "Could not reopen work order"),
+    };
+  }
 }
 
 /**

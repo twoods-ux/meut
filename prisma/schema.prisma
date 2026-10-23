@@ -43,6 +43,7 @@ model Organization {
   vendors                Vendor[]
   contracts              ServiceContract[]
   workOrders             WorkOrder[]
+  workOrderEvents        WorkOrderEvent[]
   pmProcedureTemplates   PmProcedureTemplate[]
   pmProcedureDismissals  PmProcedureSeedDismissal[]
 }
@@ -72,11 +73,12 @@ model User {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  hospital     Hospital?    @relation(fields: [hospitalId], references: [id])
-  assignedWos  WorkOrder[]  @relation("AssignedTech")
-  closedWos    WorkOrder[]  @relation("ClosedByTech")
-  openedWos    WorkOrder[]  @relation("OpenedBy")
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  hospital         Hospital?        @relation(fields: [hospitalId], references: [id])
+  assignedWos      WorkOrder[]      @relation("AssignedTech")
+  closedWos        WorkOrder[]      @relation("ClosedByTech")
+  openedWos        WorkOrder[]      @relation("OpenedBy")
+  workOrderEvents  WorkOrderEvent[] @relation("WorkOrderEventActor")
 
   @@unique([organizationId, techId])
   @@index([organizationId])
@@ -287,14 +289,35 @@ model WorkOrder {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  equipment    Equipment    @relation(fields: [equipmentId], references: [id])
-  openedBy     User?        @relation("OpenedBy", fields: [openedById], references: [id])
-  assignedTech User?        @relation("AssignedTech", fields: [assignedTechId], references: [id])
-  closedBy     User?        @relation("ClosedByTech", fields: [closedById], references: [id])
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  equipment    Equipment        @relation(fields: [equipmentId], references: [id])
+  openedBy     User?            @relation("OpenedBy", fields: [openedById], references: [id])
+  assignedTech User?            @relation("AssignedTech", fields: [assignedTechId], references: [id])
+  closedBy     User?            @relation("ClosedByTech", fields: [closedById], references: [id])
+  events       WorkOrderEvent[]
 
   @@unique([organizationId, woNumber])
   @@index([organizationId])
+}
+
+/// Audit trail for work-order actions. Reopen keeps who, when, and why
+/// after the close fields themselves are cleared.
+model WorkOrderEvent {
+  id             String   @id @default(cuid())
+  organizationId String
+  workOrderId    String
+  /// REOPEN — supervisor returned a closed work order to OPEN
+  type           String
+  actorId        String?
+  reason         String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workOrder    WorkOrder    @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  actor        User?        @relation("WorkOrderEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([workOrderId, createdAt])
 }
 
 /// Reusable PM procedure. Match fields are optional; the most specific match wins

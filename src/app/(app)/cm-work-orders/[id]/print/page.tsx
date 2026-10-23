@@ -9,6 +9,11 @@ import {
 } from "@/components/print-header";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { resolveRouteParams } from "@/lib/route-params";
+import { WORK_ORDER_REOPEN_EVENT } from "@/lib/work-order-reopen";
+import {
+  WorkOrderReopenHistoryPrint,
+  reopenHistoryFromEvents,
+} from "@/components/work-order-reopen";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +36,11 @@ export default async function CmWorkOrderPrintPage({
       assignedTech: true,
       openedBy: true,
       closedBy: true,
+      events: {
+        where: { type: WORK_ORDER_REOPEN_EVENT, organizationId },
+        orderBy: { createdAt: "asc" },
+        include: { actor: { select: { name: true } } },
+      },
     },
   });
   if (!wo) notFound();
@@ -95,6 +105,8 @@ export default async function CmWorkOrderPrintPage({
         <PrintBlock label="Work requested" value={wo.workRequested} />
         <PrintBlock label="Work performed" value={wo.workPerformed} />
         <PrintBlock label="Comments" value={wo.comments} blankLines={2} />
+
+        <WorkOrderReopenHistoryPrint events={reopenHistoryFromEvents(wo.events)} />
 
         <div className="print-sign-line">
           <div className="line">Technician signature / date</div>
