@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { formatDate } from "@/lib/utils";
 import { PrintButton } from "@/components/print-button";
+import { PrintWatermark } from "@/components/print-footer";
 
 /** Shared header for printable documents: logo, org name, date, optional title. */
 export function PrintHeader({
@@ -19,35 +20,38 @@ export function PrintHeader({
   const src = logoSrc || "/meut-logo.png";
   const usingCustom = Boolean(logoSrc);
   return (
-    <header className="mb-6 border-b-2 border-brand-500 pb-4 print:border-slate-800">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="rounded-lg bg-white p-1.5 ring-1 ring-slate-200 print:ring-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={src}
-              alt={usingCustom ? organizationName : "M.E.U.T."}
-              width={160}
-              height={60}
-              className="h-10 w-auto max-w-[180px] object-contain print:h-12"
-            />
+    <>
+      <header className="mb-6 border-b-2 border-brand-500 pb-4 print:border-slate-800">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="rounded-lg bg-white p-1.5 ring-1 ring-slate-200 print:ring-0">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={src}
+                alt={usingCustom ? organizationName : "M.E.U.T."}
+                width={160}
+                height={60}
+                className="h-10 w-auto max-w-[180px] object-contain print:h-12"
+              />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-600 print:text-slate-700">
+                {usingCustom ? "Powered by M.E.U.T." : "M.E.U.T."}
+              </p>
+              <p className="text-base font-bold text-slate-900">{organizationName}</p>
+              {subtitle ? (
+                <p className="mt-0.5 text-sm text-slate-500">{subtitle}</p>
+              ) : null}
+            </div>
           </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-600 print:text-slate-700">
-              {usingCustom ? "Powered by M.E.U.T." : "M.E.U.T."}
-            </p>
-            <p className="text-base font-bold text-slate-900">{organizationName}</p>
-            {subtitle ? (
-              <p className="mt-0.5 text-sm text-slate-500">{subtitle}</p>
-            ) : null}
+          <div className="text-right text-sm text-slate-600">
+            <p className="font-semibold text-slate-900">{title}</p>
+            <p className="mt-1 text-xs text-slate-500">Printed {printed}</p>
           </div>
         </div>
-        <div className="text-right text-sm text-slate-600">
-          <p className="font-semibold text-slate-900">{title}</p>
-          <p className="mt-1 text-xs text-slate-500">Printed {printed}</p>
-        </div>
-      </div>
-    </header>
+      </header>
+      <PrintWatermark />
+    </>
   );
 }
 

@@ -125,9 +125,22 @@ body {
     print-color-adjust: exact;
   }
 
+  /* Flex and overflow ancestors keep fixed marks from repeating on each page. */
+  main,
+  main > div {
+    display: block !important;
+    height: auto !important;
+    max-width: none !important;
+    overflow: visible !important;
+  }
+
   .print-document {
     box-shadow: none !important;
     border: none !important;
+    /* Clone bottom padding onto every page fragment so rows stay above the mark. */
+    padding-bottom: 0.78in !important;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
   }
 
   a {
@@ -142,11 +155,62 @@ body {
   .data-table tbody tr:hover td {
     background: transparent !important;
   }
+
+  /*
+   * Fixed positioning repeats the mark at the bottom of every printed page.
+   * It sits in the cloned padding, above the page margin (and the browser's
+   * own footer), so it does not cover report rows or the org header logo.
+   */
+  .print-watermark {
+    position: fixed;
+    right: 0;
+    bottom: 0.1in;
+    left: 0;
+    z-index: 40;
+    display: flex;
+    height: auto;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    pointer-events: none;
+    opacity: 0.3;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-watermark img {
+    height: auto !important;
+    width: 6.75rem !important;
+    max-width: 6.75rem !important;
+    object-fit: contain;
+  }
 }
 
 @layer components {
   .print-document {
-    @apply rounded-2xl border border-slate-200/80 bg-white p-6 shadow-soft print:rounded-none print:border-0 print:p-0 print:shadow-none;
+    @apply relative rounded-2xl border border-slate-200/80 bg-white p-6 pb-24 shadow-soft print:rounded-none print:border-0 print:p-0 print:shadow-none;
+  }
+
+  /* On screen the mark sits in the document's bottom padding, not over the body. */
+  .print-watermark {
+    position: absolute;
+    right: 0;
+    bottom: 0.85rem;
+    left: 0;
+    z-index: 1;
+    display: flex;
+    height: auto;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    opacity: 0.3;
+  }
+
+  .print-watermark__logo {
+    height: auto;
+    width: 6.75rem;
+    max-width: 6.75rem;
+    object-fit: contain;
   }
 
   .print-section-title {
