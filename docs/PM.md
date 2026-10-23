@@ -27,4 +27,4 @@ Fail closes do not change next due or last completed.
 
 ## Checklist
 
-Generating facility-scoped PM WOs copies `pmProc1` into the WO and seeds `pmChecklist` JSON steps (`id`, `text`, `done`, `result`). Techs mark Done / Pass / Fail per step on the PM detail page and printout; overall Pass/Fail remains required on close.
+Generating facility-scoped PM WOs copies `pmProc1` into the WO and seeds `pmChecklist` JSON steps (`id`, `text`, `done`, `result`). Techs mark Done / Pass / Fail / N/A per step on the PM detail page and printout. N/A means that standard step does not apply to this device: it counts as answered, is not a failure, and does not flag a reading out of limit. A reading marked N/A does not need a value. Checklists saved with only Pass or Fail still load. Overall Pass/Fail remains required on close.

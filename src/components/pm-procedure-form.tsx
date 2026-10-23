@@ -220,7 +220,13 @@ export function PmProcedureForm({
 
       <div>
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h2 className="font-semibold">Steps</h2>
+          <div>
+            <h2 className="font-semibold">Steps</h2>
+            <p className="text-xs text-slate-500">
+              On a work order, pass/fail and reading steps include N/A for devices
+              where that step does not apply.
+            </p>
+          </div>
           <button
             type="button"
             className="btn-secondary"

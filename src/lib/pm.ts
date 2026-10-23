@@ -13,7 +13,7 @@
  *   Closing again stamps from the new close date and does not add a second interval.
  */
 
-export type PmStepResult = "PASS" | "FAIL" | null;
+export type PmStepResult = "PASS" | "FAIL" | "NA" | null;
 
 /** TEXT is the legacy free-text procedure line. Library steps use the other three. */
 export type PmStepType = "TEXT" | "PASS_FAIL" | "NUMERIC" | "NOTE";
@@ -249,6 +249,68 @@ export function parseReading(raw: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Accepts PASS, FAIL, and N/A spellings (NA, N/A, not applicable). Anything else is blank. */
+export function parsePmStepResult(raw: unknown): PmStepResult {
+  const compact = String(raw ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s._/-]+/g, "");
+  if (compact === "PASS") return "PASS";
+  if (compact === "FAIL") return "FAIL";
+  if (compact === "NA" || compact === "NOTAPPLICABLE") return "NA";
+  return null;
+}
+
+export function formatPmStepResult(result: PmStepResult | string | null | undefined): string {
+  const parsed = parsePmStepResult(result);
+  if (parsed === "PASS") return "Pass";
+  if (parsed === "FAIL") return "Fail";
+  if (parsed === "NA") return "N/A";
+  return "";
+}
+
+/** Out-of-limit flag for a reading. N/A is never out of limit. */
+export function pmStepOutOfLimit(item: Pick<PmChecklistItem, "result" | "outOfRange">): boolean {
+  return item.result !== "NA" && item.outOfRange;
+}
+
+/**
+ * True when a step should count as a failure toward the work-order result.
+ * N/A is answered and is not a failure, even if a reading was also stored.
+ */
+export function pmStepIsFailure(item: Pick<PmChecklistItem, "result" | "outOfRange">): boolean {
+  if (item.result === "NA") return false;
+  return item.result === "FAIL" || item.outOfRange;
+}
+
+export function checklistHasPmFailure(
+  items: Array<Pick<PmChecklistItem, "result" | "outOfRange">>
+): boolean {
+  return items.some(pmStepIsFailure);
+}
+
+/** Result column on the PM printout. N/A is written as N/A, not the stored code. */
+export function pmStepPrintResult(item: PmChecklistItem): string {
+  if (item.result === "NA") return "N/A";
+  if (item.stepType === "PASS_FAIL" || item.stepType === "TEXT") {
+    if (item.result === "PASS" || item.result === "FAIL") return item.result;
+    if (item.done) return "Done";
+  }
+  return "";
+}
+
+/** Reading line on the PM printout. N/A replaces the value and never says out of range. */
+export function pmStepPrintReading(item: PmChecklistItem): string | null {
+  if (item.stepType !== "NUMERIC") return null;
+  if (item.result === "NA") return "Reading: N/A";
+  const limit = formatPmLimit(item.minValue, item.maxValue, item.unit);
+  const value = item.reading == null ? "______" : String(item.reading);
+  const unit = item.unit ? ` ${item.unit}` : "";
+  const limitPart = limit ? ` · limit ${limit}` : "";
+  const oor = pmStepOutOfLimit(item) ? " · OUT OF RANGE" : "";
+  return `Reading: ${value}${unit}${limitPart}${oor}`;
+}
+
 function parseOptionalInt(raw: unknown): number | null {
   if (raw == null || raw === "") return null;
   const n = typeof raw === "number" ? raw : Number(raw);
@@ -286,20 +348,22 @@ export function normalizePmChecklist(raw: unknown): PmChecklistItem[] {
       string,
       unknown
     >;
-    const resultRaw = String(row.result || "")
-      .trim()
-      .toUpperCase();
-    const result: PmStepResult =
-      resultRaw === "PASS" || resultRaw === "FAIL" ? resultRaw : null;
+    const result = parsePmStepResult(row.result);
     const stepType = parseStepType(row.stepType);
     const minValue = parseLimit(row.minValue);
     const maxValue = parseLimit(row.maxValue);
     const reading = parseReading(row.reading);
     const note = row.note == null ? "" : String(row.note);
     const outOfRange =
-      stepType === "NUMERIC" && readingOutOfRange(reading, minValue, maxValue);
-    let done = Boolean(row.done) || result === "PASS" || result === "FAIL";
-    if (stepType === "NUMERIC" && reading != null) done = true;
+      stepType === "NUMERIC" &&
+      result !== "NA" &&
+      readingOutOfRange(reading, minValue, maxValue);
+    let done =
+      Boolean(row.done) ||
+      result === "PASS" ||
+      result === "FAIL" ||
+      result === "NA";
+    if (stepType === "NUMERIC" && result !== "NA" && reading != null) done = true;
     if (stepType === "NOTE" && note.trim().length > 0) done = true;
     return {
       id: String(row.id ?? i + 1),
@@ -333,13 +397,19 @@ export function checklistFromFormData(
     const doneChecked =
       formData.get(`checklist_done_${item.id}`) === "on" ||
       formData.get(`checklist_done_${item.id}`) === "true";
-    const resultRaw = String(formData.get(`checklist_result_${item.id}`) || "")
-      .trim()
-      .toUpperCase();
-    const result: PmStepResult =
-      resultRaw === "PASS" || resultRaw === "FAIL" ? resultRaw : null;
+    const result = parsePmStepResult(formData.get(`checklist_result_${item.id}`));
 
     if (item.stepType === "NUMERIC") {
+      if (result === "NA") {
+        return {
+          ...item,
+          result: "NA",
+          reading: null,
+          outOfRange: false,
+          done: true,
+          note: null,
+        };
+      }
       const reading = parseReading(formData.get(`checklist_reading_${item.id}`));
       const outOfRange = readingOutOfRange(reading, item.minValue, item.maxValue);
       return {
@@ -392,9 +462,11 @@ export function missingRequiredPmSteps(items: PmChecklistItem[]): string[] {
   const missing: string[] = [];
   items.forEach((item, index) => {
     if (!item.required) return;
+    // N/A answers a required step and does not demand a reading or a pass/fail.
+    if (item.result === "NA") return;
     const label = `Step ${index + 1} (${item.text})`;
     if (item.stepType === "NUMERIC" && item.reading == null) {
-      missing.push(`${label} needs a reading`);
+      missing.push(`${label} needs a reading or N/A`);
     } else if (item.stepType === "NOTE" && !item.note?.trim()) {
       missing.push(`${label} needs a note`);
     } else if (
@@ -402,7 +474,7 @@ export function missingRequiredPmSteps(items: PmChecklistItem[]): string[] {
       item.result !== "PASS" &&
       item.result !== "FAIL"
     ) {
-      missing.push(`${label} needs Pass or Fail`);
+      missing.push(`${label} needs Pass, Fail, or N/A`);
     } else if (item.stepType === "TEXT" && !item.done && item.result == null) {
       missing.push(`${label} must be marked done`);
     }
