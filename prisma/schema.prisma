@@ -35,14 +35,16 @@ model Organization {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  users         User[]
-  hospitals     Hospital[]
-  departments   Department[]
-  equipment     Equipment[]
-  manufacturers Manufacturer[]
-  vendors       Vendor[]
-  contracts     ServiceContract[]
-  workOrders    WorkOrder[]
+  users                  User[]
+  hospitals              Hospital[]
+  departments            Department[]
+  equipment              Equipment[]
+  manufacturers          Manufacturer[]
+  vendors                Vendor[]
+  contracts              ServiceContract[]
+  workOrders             WorkOrder[]
+  pmProcedureTemplates   PmProcedureTemplate[]
+  pmProcedureDismissals  PmProcedureSeedDismissal[]
 }
 
 /// Maps to tblTechnicians + login (Password/SecurityLevel/IsSupervisor).
@@ -157,7 +159,9 @@ model Equipment {
   risk               String?
   equipOwner         String?
   onPm               Boolean   @default(false) // on preventive maintenance program
-  pmProc1            String? // PmProc1
+  pmProc1            String? // PmProc1 — custom per-item procedure; wins over the library
+  /// Pinned library template, used only when pmProc1 is empty
+  pmTemplateId       String?
   pmSchedule1        String? // PmSchedule1 — M|Q|S|A (or free text)
   techAssigned1      String? // TechAssigned1
   /// Next scheduled PM due date
@@ -177,14 +181,16 @@ model Equipment {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  hospital     Hospital?    @relation(fields: [hospitalId], references: [id])
-  department   Department?  @relation(fields: [departmentId], references: [id])
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  hospital     Hospital?             @relation(fields: [hospitalId], references: [id])
+  department   Department?           @relation(fields: [departmentId], references: [id])
+  pmTemplate   PmProcedureTemplate?  @relation(fields: [pmTemplateId], references: [id], onDelete: SetNull)
   workOrders   WorkOrder[]
 
   @@unique([organizationId, controlNum])
   @@index([organizationId])
   @@index([organizationId, pmNextDue])
+  @@index([pmTemplateId])
 }
 
 /// tblManufacturers (lookup; optional for MVP CRUD)
@@ -264,8 +270,14 @@ model WorkOrder {
   pmYear           Int?
   pmProc1          String?
   pmSchedule1      String?
-  /// Seeded from equipment.pmProc1; steps with done/result persisted on WO
+  /// Snapshot of the steps used on this WO (text, pass/fail, readings, notes)
   pmChecklist      Json?
+  /// CUSTOM | LIBRARY | GENERIC — how the snapshot was chosen
+  pmProcedureSource String?
+  /// Library template captured at generation/save. Not a foreign key: deleting a template must not change closed work.
+  pmTemplateId      String?
+  pmTemplateName    String?
+  pmTemplateVersion Int?
   dateOpened       DateTime  @default(now())
   dateClosed       DateTime?
   openedById       String?
@@ -282,6 +294,73 @@ model WorkOrder {
   closedBy     User?        @relation("ClosedByTech", fields: [closedById], references: [id])
 
   @@unique([organizationId, woNumber])
+  @@index([organizationId])
+}
+
+/// Reusable PM procedure. Match fields are optional; the most specific match wins
+/// (model > manufacturer + device type > device type). Steps are snapshotted onto
+/// the work order, so later edits do not change work already saved.
+model PmProcedureTemplate {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  /// Device category / equipment type. Blank matches any type.
+  deviceType     String   @default("")
+  /// Comma-separated alternate names for the device type (e.g. "EKG, electrocardiograph").
+  aliases        String   @default("")
+  /// Blank matches any manufacturer.
+  manufacturer   String   @default("")
+  /// Blank matches any model. A model match outranks manufacturer + type.
+  model          String   @default("")
+  /// Increments when staff or an unedited starter refresh changes the procedure.
+  version        Int      @default(1)
+  active         Boolean  @default(true)
+  /// True after a staff edit. Idempotent seeding will not overwrite these rows.
+  customized     Boolean  @default(false)
+  /// Stable key for starter templates. Null on staff-created templates.
+  seedKey        String?
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization    Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  steps           PmProcedureStep[]
+  pinnedEquipment Equipment[]
+
+  @@unique([organizationId, seedKey])
+  @@index([organizationId])
+  @@index([organizationId, active])
+}
+
+model PmProcedureStep {
+  id         String   @id @default(cuid())
+  templateId String
+  sortOrder  Int
+  text       String
+  /// PASS_FAIL | NUMERIC | NOTE
+  stepType   String   @default("PASS_FAIL")
+  required   Boolean  @default(true)
+  unit       String?
+  minValue   Float?
+  maxValue   Float?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  template PmProcedureTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId, sortOrder])
+}
+
+/// Starter seed keys a staff member removed. Boot/seeding will not recreate them.
+model PmProcedureSeedDismissal {
+  id             String   @id @default(cuid())
+  organizationId String
+  seedKey        String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, seedKey])
   @@index([organizationId])
 }
 

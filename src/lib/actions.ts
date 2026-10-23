@@ -27,13 +27,34 @@ import {
 } from "./equipment-print-columns";
 import { Prisma } from "@prisma/client";
 import {
-  buildPmChecklist,
   bumpPmNextDue,
   checklistFromFormData,
+  missingRequiredPmSteps,
   normalizePmChecklist,
   parseDateInput,
   type PmChecklistItem,
 } from "./pm";
+import { resolvePmProcedure, type ResolvedPmProcedure } from "./pm-procedures";
+import {
+  ensureStarterPmProcedures,
+  loadMatchTemplates,
+} from "./pm-procedure-store";
+
+function procedureSnapshot(resolved: ResolvedPmProcedure): {
+  pmChecklist: Prisma.InputJsonValue;
+  pmProcedureSource: string;
+  pmTemplateId: string | null;
+  pmTemplateName: string | null;
+  pmTemplateVersion: number | null;
+} {
+  return {
+    pmChecklist: resolved.items as unknown as Prisma.InputJsonValue,
+    pmProcedureSource: resolved.source,
+    pmTemplateId: resolved.templateId,
+    pmTemplateName: resolved.templateName,
+    pmTemplateVersion: resolved.templateVersion,
+  };
+}
 
 async function nextWoNumber(organizationId: string): Promise<number> {
   const counterId = `wo:${organizationId}`;
@@ -660,17 +681,34 @@ export async function closeWorkOrder(id: string, formData: FormData) {
     .toUpperCase();
   let pmResult: string | null = null;
   let pmChecklist: PmChecklistItem[] | undefined;
+  let procedureMeta: ReturnType<typeof procedureSnapshot> | null = null;
   if (existing.type === "PM") {
     if (rawPmResult !== "PASS" && rawPmResult !== "FAIL") {
       throw new Error("Pass or Fail is required when closing a PM work order");
     }
     pmResult = rawPmResult;
     const current = normalizePmChecklist(existing.pmChecklist);
-    const seeded =
-      current.length > 0
-        ? current
-        : buildPmChecklist(existing.pmProc1 || existing.equipment.pmProc1);
+    let seeded = current;
+    if (current.length === 0) {
+      const templates = await loadMatchTemplates(prisma, organizationId);
+      const resolved = resolvePmProcedure(
+        {
+          pmProc1: existing.pmProc1 || existing.equipment.pmProc1,
+          description: existing.equipment.description,
+          manufacturer: existing.equipment.manufacturer,
+          model: existing.equipment.model,
+          pmTemplateId: existing.equipment.pmTemplateId,
+        },
+        templates
+      );
+      seeded = resolved.items;
+      procedureMeta = procedureSnapshot(resolved);
+    }
     pmChecklist = checklistFromFormData(formData, seeded);
+    const missing = missingRequiredPmSteps(pmChecklist);
+    if (missing.length > 0) {
+      throw new Error(missing.slice(0, 4).join("; "));
+    }
   }
   const dateClosed = new Date();
   await prisma.workOrder.update({
@@ -683,7 +721,17 @@ export async function closeWorkOrder(id: string, formData: FormData) {
       comments: String(formData.get("comments") || "") || null,
       closedById: userId,
       pmResult,
-      ...(pmChecklist ? { pmChecklist } : {}),
+      ...(pmChecklist
+        ? { pmChecklist: pmChecklist as unknown as Prisma.InputJsonValue }
+        : {}),
+      ...(procedureMeta
+        ? {
+            pmProcedureSource: procedureMeta.pmProcedureSource,
+            pmTemplateId: procedureMeta.pmTemplateId,
+            pmTemplateName: procedureMeta.pmTemplateName,
+            pmTemplateVersion: procedureMeta.pmTemplateVersion,
+          }
+        : {}),
     },
   });
 
@@ -718,18 +766,44 @@ export async function savePmChecklist(id: string, formData: FormData) {
   const { organizationId } = await requireStaffSession();
   const existing = await prisma.workOrder.findFirst({
     where: { id, organizationId, type: "PM" },
+    include: { equipment: true },
   });
   if (!existing) throw new Error("PM work order not found");
   if (existing.status !== "OPEN") {
     throw new Error("Checklist can only be edited on open PM work orders");
   }
   const current = normalizePmChecklist(existing.pmChecklist);
-  const seeded =
-    current.length > 0 ? current : buildPmChecklist(existing.pmProc1);
+  let seeded = current;
+  let procedureMeta: ReturnType<typeof procedureSnapshot> | null = null;
+  if (current.length === 0) {
+    const templates = await loadMatchTemplates(prisma, organizationId);
+    const resolved = resolvePmProcedure(
+      {
+        pmProc1: existing.pmProc1 || existing.equipment.pmProc1,
+        description: existing.equipment.description,
+        manufacturer: existing.equipment.manufacturer,
+        model: existing.equipment.model,
+        pmTemplateId: existing.equipment.pmTemplateId,
+      },
+      templates
+    );
+    seeded = resolved.items;
+    procedureMeta = procedureSnapshot(resolved);
+  }
   const pmChecklist = checklistFromFormData(formData, seeded);
   await prisma.workOrder.update({
     where: { id },
-    data: { pmChecklist },
+    data: {
+      pmChecklist: pmChecklist as unknown as Prisma.InputJsonValue,
+      ...(procedureMeta
+        ? {
+            pmProcedureSource: procedureMeta.pmProcedureSource,
+            pmTemplateId: procedureMeta.pmTemplateId,
+            pmTemplateName: procedureMeta.pmTemplateName,
+            pmTemplateVersion: procedureMeta.pmTemplateVersion,
+          }
+        : {}),
+    },
   });
   revalidatePath(`/pm-work-orders/${id}`);
   revalidatePath(`/pm-work-orders/${id}/print`);
@@ -826,6 +900,7 @@ export async function generatePmWorkOrders(formData: FormData) {
   const equipment = await prisma.equipment.findMany({
     where: equipmentWhere,
   });
+  const templates = await loadMatchTemplates(prisma, organizationId);
   let created = 0;
   for (const eq of equipment) {
     const existing = await prisma.workOrder.findFirst({
@@ -846,6 +921,17 @@ export async function generatePmWorkOrders(formData: FormData) {
       });
       assignedTechId = u?.id ?? null;
     }
+    const resolved = resolvePmProcedure(
+      {
+        pmProc1: eq.pmProc1,
+        description: eq.description,
+        manufacturer: eq.manufacturer,
+        model: eq.model,
+        pmTemplateId: eq.pmTemplateId,
+      },
+      templates
+    );
+    const snapshot = procedureSnapshot(resolved);
     await prisma.workOrder.create({
       data: {
         organizationId,
@@ -860,7 +946,11 @@ export async function generatePmWorkOrders(formData: FormData) {
         pmMonth: month,
         pmProc1: eq.pmProc1,
         pmSchedule1: eq.pmSchedule1,
-        pmChecklist: buildPmChecklist(eq.pmProc1),
+        pmChecklist: snapshot.pmChecklist,
+        pmProcedureSource: snapshot.pmProcedureSource,
+        pmTemplateId: snapshot.pmTemplateId,
+        pmTemplateName: snapshot.pmTemplateName,
+        pmTemplateVersion: snapshot.pmTemplateVersion,
         assignedTechCode: eq.techAssigned1,
         assignedTechId,
         openedById: userId,
@@ -998,6 +1088,12 @@ export async function signupOrganization(formData: FormData): Promise<
       });
       return created;
     });
+
+    try {
+      await ensureStarterPmProcedures(prisma, org.id);
+    } catch (seedErr) {
+      console.error("[signup] pm procedure starters", seedErr);
+    }
 
     let claimedCheckout = false;
     if (checkoutSessionId) {

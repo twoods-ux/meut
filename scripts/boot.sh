@@ -16,5 +16,7 @@ if (n === 0) {
 }
 console.log("[boot] skip seed, orgs=", n);
 TS
+echo "[boot] pm procedure library (idempotent)"
+npx tsx scripts/seed-pm-procedures.ts
 echo "[boot] starting next"
 exec npx next start -H 0.0.0.0 -p ${PORT:-3000}

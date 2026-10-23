@@ -11,6 +11,7 @@ const STAFF_PREFIXES = [
   "/quick-close",
   "/cm-work-orders",
   "/pm-work-orders",
+  "/pm-procedures",
   "/reports",
   "/settings",
 ];
@@ -52,6 +53,8 @@ export const config = {
     "/quick-close/:path*",
     "/cm-work-orders/:path*",
     "/pm-work-orders/:path*",
+    "/pm-procedures",
+    "/pm-procedures/:path*",
     "/reports/:path*",
     "/settings/:path*",
     "/portal",

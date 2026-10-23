@@ -13,6 +13,7 @@ import {
   Users,
   ClipboardList,
   CalendarCheck,
+  ListChecks,
   BarChart3,
   Settings,
   LogOut,
@@ -30,6 +31,7 @@ const nav = [
   { href: "/quick-close", label: "Quick Close", icon: CircleCheck },
   { href: "/cm-work-orders", label: "CM Work Orders", icon: ClipboardList },
   { href: "/pm-work-orders", label: "PM Work Orders", icon: CalendarCheck },
+  { href: "/pm-procedures", label: "PM Procedures", icon: ListChecks },
   { href: "/reports", label: "Reports", icon: BarChart3 },
 ];
 

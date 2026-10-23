@@ -9,6 +9,9 @@ import {
   customerFacilityEquipmentWhere,
 } from "@/lib/tenant";
 import { resolveRouteParams } from "@/lib/route-params";
+import { PmChecklistEditor } from "@/components/pm-checklist";
+import { loadMatchTemplates } from "@/lib/pm-procedure-store";
+import { checklistForWorkOrder } from "@/lib/pm-procedures";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +43,21 @@ export default async function CustomerWorkOrderDetailPage({
     },
   });
   if (!wo) notFound();
+
+  const checklist =
+    wo.type === "PM"
+      ? checklistForWorkOrder({
+          status: wo.status,
+          pmChecklist: wo.pmChecklist,
+          pmProc1: wo.pmProc1,
+          equipmentPmProc1: wo.equipment.pmProc1,
+          description: wo.equipment.description,
+          manufacturer: wo.equipment.manufacturer,
+          model: wo.equipment.model,
+          pmTemplateId: wo.equipment.pmTemplateId,
+          templates: await loadMatchTemplates(prisma, organizationId),
+        }).items
+      : [];
 
   const controlLabel = wo.controlNum || wo.equipment.controlNum;
 
@@ -126,6 +144,14 @@ export default async function CustomerWorkOrderDetailPage({
           ) : null}
         </div>
       </div>
+
+      {wo.type === "PM" && checklist.length > 0 ? (
+        <div className="card mb-6">
+          <h2 className="mb-2 font-semibold">PM steps</h2>
+          <p className="mb-3 text-xs text-slate-500">Read only.</p>
+          <PmChecklistEditor items={checklist} readOnly />
+        </div>
+      ) : null}
 
       <div className="card mb-6">
         <h2 className="mb-2 font-semibold">Work Requested</h2>

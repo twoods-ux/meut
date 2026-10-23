@@ -1,5 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { resolvePmProcedure } from "../src/lib/pm-procedures";
+import {
+  ensureStarterPmProcedures,
+  loadMatchTemplates,
+} from "../src/lib/pm-procedure-store";
 
 const prisma = new PrismaClient();
 
@@ -314,6 +319,27 @@ async function main() {
     },
   });
 
+  const eq4 = await prisma.equipment.create({
+    data: {
+      organizationId: demoOrg.id,
+      controlNum: "DEMO-4001",
+      hospId: "DEMO",
+      costCtr: "ICU",
+      serial: "SN-ICU-PUMP",
+      manufacturer: "Baxter",
+      model: "Sigma Spectrum",
+      description: "Infusion Pump",
+      location: "ICU-4",
+      hospitalId: hospital.id,
+      departmentId: icu.id,
+      status: "ACTIVE",
+      onPm: true,
+      pmSchedule1: "A",
+      techAssigned1: "JT",
+      comments: "No custom procedure — new PMs use the infusion pump library template",
+    },
+  });
+
   await prisma.equipment.create({
     data: {
       organizationId: demoOrg.id,
@@ -473,7 +499,44 @@ async function main() {
     },
   });
 
-  await nextWo(demoOrg.id, 1003);
+  await ensureStarterPmProcedures(prisma, demoOrg.id);
+  await ensureStarterPmProcedures(prisma, acmeOrg.id);
+  const demoTemplates = await loadMatchTemplates(prisma, demoOrg.id);
+  const pumpProcedure = resolvePmProcedure(
+    {
+      pmProc1: eq4.pmProc1,
+      description: eq4.description,
+      manufacturer: eq4.manufacturer,
+      model: eq4.model,
+      pmTemplateId: eq4.pmTemplateId,
+    },
+    demoTemplates
+  );
+  await prisma.workOrder.create({
+    data: {
+      organizationId: demoOrg.id,
+      woNumber: 1004,
+      type: "PM",
+      status: "OPEN",
+      equipmentId: eq4.id,
+      controlNum: eq4.controlNum,
+      hospId: "DEMO",
+      costCtr: "ICU",
+      workRequested: "Scheduled preventive maintenance",
+      pmMonth: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
+      pmSchedule1: "A",
+      pmChecklist: pumpProcedure.items,
+      pmProcedureSource: pumpProcedure.source,
+      pmTemplateId: pumpProcedure.templateId,
+      pmTemplateName: pumpProcedure.templateName,
+      pmTemplateVersion: pumpProcedure.templateVersion,
+      assignedTechId: tech.id,
+      assignedTechCode: "JT",
+      openedById: supervisor.id,
+    },
+  });
+
+  await nextWo(demoOrg.id, 1004);
   await nextWo(acmeOrg.id, 1000);
 
   console.log("Seed complete.");

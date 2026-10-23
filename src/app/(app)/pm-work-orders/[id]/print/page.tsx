@@ -8,8 +8,9 @@ import {
   PrintBlock,
 } from "@/components/print-header";
 import { formatDate, formatDateTime } from "@/lib/utils";
-import { buildPmChecklist, normalizePmChecklist } from "@/lib/pm";
 import { PmChecklistPrint } from "@/components/pm-checklist";
+import { loadMatchTemplates } from "@/lib/pm-procedure-store";
+import { checklistForWorkOrder } from "@/lib/pm-procedures";
 import { resolveRouteParams } from "@/lib/route-params";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +37,22 @@ export default async function PmWorkOrderPrintPage({
     },
   });
   if (!wo) notFound();
+
+  const templates = await loadMatchTemplates(prisma, organizationId);
+  const checklistView = checklistForWorkOrder({
+    status: wo.status,
+    pmChecklist: wo.pmChecklist,
+    pmProc1: wo.pmProc1,
+    equipmentPmProc1: wo.equipment.pmProc1,
+    description: wo.equipment.description,
+    manufacturer: wo.equipment.manufacturer,
+    model: wo.equipment.model,
+    pmTemplateId: wo.equipment.pmTemplateId,
+    templates,
+  });
+  const procedureCaption = wo.pmTemplateName
+    ? `${wo.pmTemplateName}${wo.pmTemplateVersion != null ? ` v${wo.pmTemplateVersion}` : ""}`
+    : null;
 
   const org = organizationName || "Organization";
 
@@ -116,20 +133,15 @@ export default async function PmWorkOrderPrintPage({
         <PrintBlock label="Work requested" value={wo.workRequested} />
         <PrintBlock label="Work performed" value={wo.workPerformed} />
 
-        {(() => {
-          const steps = normalizePmChecklist(wo.pmChecklist);
-          const items =
-            steps.length > 0
-              ? steps
-              : buildPmChecklist(wo.pmProc1 || wo.equipment.pmProc1);
-          if (items.length === 0) return null;
-          return (
-            <>
-              <h2 className="print-section-title">PM steps</h2>
-              <PmChecklistPrint items={items} />
-            </>
-          );
-        })()}
+        {checklistView.items.length > 0 ? (
+          <>
+            <h2 className="print-section-title">PM steps</h2>
+            {procedureCaption ? (
+              <p className="mb-1 text-xs text-slate-500">{procedureCaption}</p>
+            ) : null}
+            <PmChecklistPrint items={checklistView.items} />
+          </>
+        ) : null}
 
         <PrintBlock label="Comments" value={wo.comments} blankLines={3} />
 
