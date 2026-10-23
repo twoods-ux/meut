@@ -112,6 +112,7 @@ export default async function DashboardPage() {
               <th>Control #</th>
               <th>Status</th>
               <th>Opened</th>
+              <th>Closed</th>
               <th>Tech</th>
             </tr>
           </thead>
@@ -140,12 +141,13 @@ export default async function DashboardPage() {
                   <StatusBadge status={wo.status} />
                 </td>
                 <td className="text-slate-500">{formatDate(wo.dateOpened)}</td>
+                <td className="text-slate-500">{formatDate(wo.dateClosed)}</td>
                 <td>{wo.assignedTech?.name || wo.assignedTechCode || "—"}</td>
               </tr>
             ))}
             {recentWos.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-10 text-center text-slate-400">
+                <td colSpan={7} className="py-10 text-center text-slate-400">
                   No work orders yet
                 </td>
               </tr>

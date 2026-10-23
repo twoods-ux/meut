@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useTransition, type FormEvent } from "reac
 import Link from "next/link";
 import { closeWorkOrder, findOpenWorkOrders } from "@/lib/actions";
 import { StatusBadge } from "@/components/ui";
-import { formatDate } from "@/lib/utils";
+import { formatDate, toDateTimeLocalValue } from "@/lib/utils";
 
 type OpenWo = {
   id: string;
@@ -234,6 +234,20 @@ export function QuickCloseForm() {
                         ? "PM completed per procedure"
                         : "Completed"
                     }
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor={`closed-${wo.id}`}>
+                    Date closed
+                  </label>
+                  <input
+                    id={`closed-${wo.id}`}
+                    className="input"
+                    type="datetime-local"
+                    name="dateClosed"
+                    step={60}
+                    required
+                    defaultValue={toDateTimeLocalValue(new Date())}
                   />
                 </div>
                 <div>

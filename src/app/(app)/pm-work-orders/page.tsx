@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader, StatusBadge, EmptyState, StatCard } from "@/components/ui";
-import { formatDate } from "@/lib/utils";
+import { formatDate, toDateTimeLocalValue } from "@/lib/utils";
 import { generatePmWorkOrders, closeWorkOrder } from "@/lib/actions";
 import { revalidatePath } from "next/cache";
+import { DateTimeField } from "@/components/date-time-field";
 import { requireOrgSession } from "@/lib/tenant";
 import { resolveSearchParams, oneParam } from "@/lib/route-params";
 import {
@@ -47,6 +49,8 @@ export default async function PmPage({
   const dueView = (oneParam(raw.due) || "overdue").toLowerCase();
   const deletedWo = oneParam(raw.deleted)?.trim() || "";
   const deleteError = oneParam(raw.error)?.trim().slice(0, 300) || "";
+  const closeError = oneParam(raw.closeError)?.trim().slice(0, 300) || "";
+  const openedDefault = toDateTimeLocalValue(new Date());
 
   const where = buildWorkOrderWhere(organizationId, "PM", filters);
 
@@ -140,7 +144,15 @@ export default async function PmPage({
   async function closeAction(formData: FormData) {
     "use server";
     const id = String(formData.get("id"));
-    await closeWorkOrder(id, formData);
+    try {
+      await closeWorkOrder(id, formData);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Could not close work order";
+      redirect(
+        `/pm-work-orders?closeError=${encodeURIComponent(message.slice(0, 300))}`
+      );
+    }
     revalidatePath("/pm-work-orders");
   }
 
@@ -201,6 +213,15 @@ export default async function PmPage({
         >
           <p className="font-medium">Could not delete work order</p>
           <p className="mt-1">{deleteError}</p>
+        </div>
+      ) : null}
+      {closeError ? (
+        <div
+          role="alert"
+          className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
+        >
+          <p className="font-medium">Could not close work order</p>
+          <p className="mt-1">{closeError}</p>
         </div>
       ) : null}
 
@@ -318,6 +339,13 @@ export default async function PmPage({
             pattern="\d{4}-\d{2}"
           />
         </div>
+        <DateTimeField
+          id="pm-date-opened"
+          name="dateOpened"
+          label="Date opened"
+          defaultValue={openedDefault}
+          hint="Used for every PM created in this batch."
+        />
         <div>
           <label className="label" htmlFor="generateFacility">
             Facility
@@ -649,6 +677,16 @@ export default async function PmPage({
                           step="0.25"
                           defaultValue="0.5"
                           title="Labor hours"
+                        />
+                        <input
+                          className="input w-[11.5rem] py-1 text-xs"
+                          name="dateClosed"
+                          type="datetime-local"
+                          step={60}
+                          required
+                          defaultValue={openedDefault}
+                          title="Date closed"
+                          aria-label="Date closed"
                         />
                         <button
                           type="submit"

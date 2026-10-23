@@ -186,8 +186,8 @@ function WorkOrderTable({
             {isPm ? <th>Schedule</th> : <th>Priority</th>}
             <th>Status</th>
             {isPm ? <th>Result</th> : null}
-            {isPm ? <th>Date closed</th> : null}
             <th>Opened</th>
+            <th>{isPm ? "Date closed" : "Closed"}</th>
             <th>Tech</th>
             {isPm ? <th>Labor</th> : <th>Work requested</th>}
           </tr>
@@ -227,10 +227,8 @@ function WorkOrderTable({
                   )}
                 </td>
               ) : null}
-              {isPm ? (
-                <td>{wo.dateClosed ? formatDate(wo.dateClosed) : "—"}</td>
-              ) : null}
               <td>{formatDate(wo.dateOpened)}</td>
+              <td>{wo.dateClosed ? formatDate(wo.dateClosed) : "—"}</td>
               <td>{wo.assignedTech?.name || wo.assignedTechCode || "—"}</td>
               {isPm ? (
                 <td>
@@ -246,7 +244,7 @@ function WorkOrderTable({
           {rows.length === 0 ? (
             <tr>
               <td
-                colSpan={isPm ? 11 : 8}
+                colSpan={isPm ? 11 : 9}
                 className="py-6 text-center text-slate-400"
               >
                 No work orders match this selection

@@ -3,11 +3,13 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { closeWorkOrder, deleteOpenWorkOrder } from "@/lib/actions";
-import { formatDateTime } from "@/lib/utils";
 import { redirect } from "next/navigation";
 import { requireOrgSession } from "@/lib/tenant";
 import { Printer } from "lucide-react";
-import { resolveRouteParams } from "@/lib/route-params";
+import { resolveRouteParams, oneParam } from "@/lib/route-params";
+import { WorkOrderDatesForm } from "@/components/work-order-dates-form";
+import { DateTimeField } from "@/components/date-time-field";
+import { toDateTimeLocalValue } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -22,12 +24,10 @@ export default async function CmDetailPage({
 }) {
   const { id: routeId } = await resolveRouteParams(params);
   const rawSp = searchParams ? await Promise.resolve(searchParams) : {};
-  const errorMessage = (() => {
-    const v = rawSp.error;
-    if (typeof v === "string" && v.trim()) return v.trim().slice(0, 300);
-    if (Array.isArray(v) && typeof v[0] === "string") return v[0].trim().slice(0, 300);
-    return "";
-  })();
+  const errorMessage = (oneParam(rawSp.error) || "").trim().slice(0, 300);
+  const closeError = (oneParam(rawSp.closeError) || "").trim().slice(0, 300);
+  const dateError = (oneParam(rawSp.dateError) || "").trim().slice(0, 300);
+  const savedDates = oneParam(rawSp.saved) === "dates";
   const { organizationId } = await requireOrgSession();
   const wo = await prisma.workOrder.findFirst({
     where: { id: routeId, organizationId },
@@ -42,7 +42,15 @@ export default async function CmDetailPage({
 
   async function closeAction(formData: FormData) {
     "use server";
-    await closeWorkOrder(routeId, formData);
+    try {
+      await closeWorkOrder(routeId, formData);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Could not close work order";
+      redirect(
+        `/cm-work-orders/${routeId}?closeError=${encodeURIComponent(message.slice(0, 300))}`
+      );
+    }
     redirect(`/cm-work-orders/${routeId}`);
   }
 
@@ -93,6 +101,35 @@ export default async function CmDetailPage({
           <p className="mt-1">{errorMessage}</p>
         </div>
       ) : null}
+      {closeError ? (
+        <div
+          role="alert"
+          className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
+        >
+          <p className="font-medium">Could not close work order</p>
+          <p className="mt-1">{closeError}</p>
+        </div>
+      ) : null}
+      {dateError ? (
+        <div
+          role="alert"
+          className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
+        >
+          <p className="font-medium">Could not save dates</p>
+          <p className="mt-1">{dateError}</p>
+        </div>
+      ) : null}
+      {savedDates ? (
+        <div
+          role="status"
+          className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
+        >
+          <p className="font-medium">Work order dates saved</p>
+          <p className="mt-1">
+            Lists and reports use these opened and closed dates.
+          </p>
+        </div>
+      ) : null}
       <div className="mb-4 flex flex-wrap gap-3">
         <StatusBadge status={wo.status} />
         <span className="badge bg-amber-100 text-amber-800">{wo.priority || "ROUTINE"}</span>
@@ -110,13 +147,15 @@ export default async function CmDetailPage({
           <p><span className="text-slate-500">Hospital:</span> {wo.equipment.hospital?.name || "—"}</p>
           <p><span className="text-slate-500">Department:</span> {wo.equipment.department?.name || "—"}</p>
         </div>
-        <div className="card space-y-2 text-sm">
-          <h2 className="font-semibold">Work Order</h2>
-          <p><span className="text-slate-500">Opened:</span> {formatDateTime(wo.dateOpened)}</p>
-          <p><span className="text-slate-500">Opened by:</span> {wo.openedBy?.name || "—"}</p>
-          <p><span className="text-slate-500">Assigned:</span> {wo.assignedTech?.name || wo.assignedTechCode || "—"}</p>
-          <p><span className="text-slate-500">Closed:</span> {formatDateTime(wo.dateClosed)}</p>
-        </div>
+        <WorkOrderDatesForm
+          id={wo.id}
+          hrefBase={`/cm-work-orders/${wo.id}`}
+          status={wo.status}
+          dateOpened={wo.dateOpened}
+          dateClosed={wo.dateClosed}
+          openedByName={wo.openedBy?.name || null}
+          assignedLabel={wo.assignedTech?.name || wo.assignedTechCode || null}
+        />
       </div>
 
       <div className="card mb-6">
@@ -139,6 +178,13 @@ export default async function CmDetailPage({
             <label className="label">Comments</label>
             <textarea className="input" name="comments" rows={2} />
           </div>
+          <DateTimeField
+            id="cm-date-closed"
+            name="dateClosed"
+            label="Date closed"
+            defaultValue={toDateTimeLocalValue(new Date())}
+            hint="Defaults to now. Cannot be before the opened date."
+          />
           <button type="submit" className="btn-primary">Close Work Order</button>
         </form>
       ) : (

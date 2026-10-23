@@ -96,6 +96,7 @@ export default async function CustomerWorkOrdersPage({
                 <th>Priority</th>
                 <th>Status</th>
                 <th>Opened</th>
+                <th>Closed</th>
                 <th>Tech</th>
                 <th>Work Requested</th>
               </tr>
@@ -129,6 +130,7 @@ export default async function CustomerWorkOrdersPage({
                     <StatusBadge status={wo.status} />
                   </td>
                   <td>{formatDate(wo.dateOpened)}</td>
+                  <td>{formatDate(wo.dateClosed)}</td>
                   <td>
                     {wo.assignedTech?.name || wo.assignedTechCode || "—"}
                   </td>

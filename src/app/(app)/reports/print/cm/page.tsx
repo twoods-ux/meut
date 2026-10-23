@@ -89,6 +89,7 @@ export default async function CmListPrintPage({
                 <th>Priority</th>
                 <th>Status</th>
                 <th>Opened</th>
+                <th>Closed</th>
                 <th>Tech</th>
                 <th>Work requested</th>
               </tr>
@@ -102,13 +103,14 @@ export default async function CmListPrintPage({
                   <td>{wo.priority || "—"}</td>
                   <td>{wo.status}</td>
                   <td>{formatDate(wo.dateOpened)}</td>
+                  <td>{formatDate(wo.dateClosed)}</td>
                   <td>{wo.assignedTech?.name || wo.assignedTechCode || "—"}</td>
                   <td className="max-w-xs truncate">{wo.workRequested || "—"}</td>
                 </tr>
               ))}
               {wos.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-6 text-center text-slate-400">
+                  <td colSpan={9} className="py-6 text-center text-slate-400">
                     No CM work orders
                   </td>
                 </tr>

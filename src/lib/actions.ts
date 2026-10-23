@@ -39,6 +39,8 @@ import {
   ensureStarterPmProcedures,
   loadMatchTemplates,
 } from "./pm-procedure-store";
+import { equipmentLookupWhere } from "./equipment-lookup";
+import { parseDateTimeLocal, workOrderCloseBeforeOpen } from "./utils";
 
 function procedureSnapshot(resolved: ResolvedPmProcedure): {
   pmChecklist: Prisma.InputJsonValue;
@@ -54,6 +56,15 @@ function procedureSnapshot(resolved: ResolvedPmProcedure): {
     pmTemplateName: resolved.templateName,
     pmTemplateVersion: resolved.templateVersion,
   };
+}
+
+/** Blank or omitted uses now. A present but invalid value is rejected. */
+function submittedDateTime(formData: FormData, name: string, label: string): Date {
+  const raw = formData.get(name);
+  if (raw == null || String(raw).trim() === "") return new Date();
+  const parsed = parseDateTimeLocal(String(raw));
+  if (!parsed) throw new Error(`${label} is not a valid date and time`);
+  return parsed;
 }
 
 async function nextWoNumber(organizationId: string): Promise<number> {
@@ -410,40 +421,45 @@ export async function updateTechnician(id: string, formData: FormData) {
 
 export async function openCmWorkOrder(formData: FormData) {
   const { organizationId, userId } = await requireStaffSession();
-  const facilityValue = String(
-    formData.get("facility") || formData.get("hospitalId") || ""
-  ).trim();
-  const facilityId =
-    facilityValue && facilityValue !== "ALL" ? facilityValue : null;
-  let facilityScope: Prisma.EquipmentWhereInput = {};
-  if (facilityId) {
-    const hospital = await prisma.hospital.findFirst({
-      where: { id: facilityId, organizationId },
-      select: { id: true, hospId: true },
-    });
-    if (!hospital) throw new Error("Hospital not found");
-    facilityScope = {
-      OR: [{ hospitalId: hospital.id }, { hospId: hospital.hospId }],
-    };
-  }
+  const dateOpened = submittedDateTime(formData, "dateOpened", "Opened date");
 
   let equipmentId = String(formData.get("equipmentId") || "").trim();
   const controlNumRaw = String(formData.get("controlNum") || "").trim();
   if (!equipmentId && controlNumRaw) {
-    const byControl = await prisma.equipment.findFirst({
+    const exact = await prisma.equipment.findMany({
       where: {
         organizationId,
         controlNum: { equals: controlNumRaw, mode: "insensitive" },
-        ...facilityScope,
       },
+      take: 2,
     });
-    if (!byControl) throw new Error(`Equipment not found for Control # ${controlNumRaw}`);
-    equipmentId = byControl.id;
+    if (exact.length === 1) {
+      equipmentId = exact[0].id;
+    } else if (exact.length > 1) {
+      throw new Error(
+        "Multiple equipment share that control number — pick one from the list"
+      );
+    } else {
+      const where = equipmentLookupWhere(organizationId, controlNumRaw);
+      const broader = where
+        ? await prisma.equipment.findMany({ where, take: 2 })
+        : [];
+      if (broader.length === 1) {
+        equipmentId = broader[0].id;
+      } else if (broader.length > 1) {
+        throw new Error(
+          `Several equipment match "${controlNumRaw}" — pick one from the list`
+        );
+      } else {
+        throw new Error(`Equipment not found for "${controlNumRaw}"`);
+      }
+    }
   }
   if (!equipmentId) throw new Error("Equipment or Control # is required");
-  const eq = await prisma.equipment.findFirstOrThrow({
-    where: { id: equipmentId, organizationId, ...facilityScope },
+  const eq = await prisma.equipment.findFirst({
+    where: { id: equipmentId, organizationId },
   });
+  if (!eq) throw new Error("Equipment not found");
   const workRequested = String(formData.get("workRequested") || "").trim();
   if (!workRequested) throw new Error("Problem / description is required");
   const woNumber = await nextWoNumber(organizationId);
@@ -468,6 +484,7 @@ export async function openCmWorkOrder(formData: FormData) {
       priority: String(formData.get("priority") || "ROUTINE") || "ROUTINE",
       openedById: userId,
       assignedTechId,
+      dateOpened,
     },
   });
   revalidatePath("/cm-work-orders");
@@ -589,7 +606,12 @@ export async function createCustomerCmWorkOrderAction(formData: FormData) {
   }
 }
 
-/** Typeahead / lookup equipment by Control # within the current org. */
+/**
+ * Typeahead for opening a CM. Searches control number, serial, asset/device
+ * number, and description across the whole inventory (not a preloaded slice).
+ * An exact control number is returned even when hospitalId/hospId do not match
+ * the selected facility.
+ */
 export async function lookupEquipmentByControlNum(
   query: string,
   facilityId?: string
@@ -598,35 +620,38 @@ export async function lookupEquipmentByControlNum(
   const q = String(query || "").trim();
   if (!q) return [];
   const rawFacilityId = String(facilityId || "").trim();
-  let facilityScope: Prisma.EquipmentWhereInput = {};
+  let facility: { id: string; hospId: string } | null = null;
   if (rawFacilityId && rawFacilityId !== "ALL") {
     const hospital = await prisma.hospital.findFirst({
       where: { id: rawFacilityId, organizationId },
       select: { id: true, hospId: true },
     });
     if (!hospital) throw new Error("Hospital not found");
-    facilityScope = {
-      OR: [{ hospitalId: hospital.id }, { hospId: hospital.hospId }],
-    };
+    facility = hospital;
   }
+  const where = equipmentLookupWhere(organizationId, q, facility);
+  if (!where) return [];
   const matches = await prisma.equipment.findMany({
-    where: {
-      organizationId,
-      status: "ACTIVE",
-      controlNum: { contains: q, mode: "insensitive" },
-      ...facilityScope,
-    },
+    where,
     select: {
       id: true,
       controlNum: true,
       description: true,
       manufacturer: true,
       model: true,
+      serial: true,
+      deviceNum: true,
       location: true,
       hospId: true,
     },
     orderBy: { controlNum: "asc" },
-    take: 20,
+    take: 25,
+  });
+  matches.sort((a, b) => {
+    const aExact = a.controlNum.toLowerCase() === q.toLowerCase() ? 0 : 1;
+    const bExact = b.controlNum.toLowerCase() === q.toLowerCase() ? 0 : 1;
+    if (aExact !== bExact) return aExact - bExact;
+    return a.controlNum.localeCompare(b.controlNum);
   });
   return matches;
 }
@@ -710,7 +735,10 @@ export async function closeWorkOrder(id: string, formData: FormData) {
       throw new Error(missing.slice(0, 4).join("; "));
     }
   }
-  const dateClosed = new Date();
+  const dateClosed = submittedDateTime(formData, "dateClosed", "Closed date");
+  if (workOrderCloseBeforeOpen(existing.dateOpened, dateClosed)) {
+    throw new Error("Closed date cannot be before the opened date");
+  }
   await prisma.workOrder.update({
     where: { id },
     data: {
@@ -759,6 +787,87 @@ export async function closeWorkOrder(id: string, formData: FormData) {
   revalidatePath("/reports");
   revalidatePath("/quick-close");
   revalidatePath("/quick-entry");
+}
+
+/**
+ * Staff-only: correct a CM or PM work order's opened date, and its closed
+ * date when the order is already closed. Does not change status.
+ * Close may equal open; it cannot be earlier.
+ */
+export async function updateWorkOrderDates(
+  id: string,
+  formData: FormData
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const { organizationId } = await requireStaffSession();
+    const existing = await prisma.workOrder.findFirst({
+      where: { id, organizationId },
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        equipmentId: true,
+      },
+    });
+    if (!existing) {
+      return { ok: false, error: "Work order not found" };
+    }
+    if (existing.type !== "CM" && existing.type !== "PM") {
+      return { ok: false, error: "Only CM or PM work orders can be updated" };
+    }
+
+    const dateOpened = parseDateTimeLocal(String(formData.get("dateOpened") || ""));
+    if (!dateOpened) {
+      return { ok: false, error: "Opened date and time are required" };
+    }
+
+    const isClosed = existing.status === "CLOSED";
+    let dateClosed: Date | null = null;
+    if (isClosed) {
+      dateClosed = parseDateTimeLocal(String(formData.get("dateClosed") || ""));
+      if (!dateClosed) {
+        return { ok: false, error: "Closed date and time are required" };
+      }
+      if (workOrderCloseBeforeOpen(dateOpened, dateClosed)) {
+        return {
+          ok: false,
+          error: "Closed date cannot be before the opened date",
+        };
+      }
+    }
+
+    await prisma.workOrder.update({
+      where: { id: existing.id },
+      data: {
+        dateOpened,
+        ...(isClosed ? { dateClosed } : {}),
+      },
+    });
+
+    revalidatePath("/cm-work-orders");
+    revalidatePath("/pm-work-orders");
+    revalidatePath(`/cm-work-orders/${id}`);
+    revalidatePath(`/pm-work-orders/${id}`);
+    revalidatePath(`/cm-work-orders/${id}/print`);
+    revalidatePath(`/pm-work-orders/${id}/print`);
+    revalidatePath(`/equipment/${existing.equipmentId}`);
+    revalidatePath("/equipment");
+    revalidatePath("/dashboard");
+    revalidatePath("/reports");
+    revalidatePath("/reports/print/cm");
+    revalidatePath("/reports/print/pm");
+    revalidatePath("/portal/work-orders");
+    revalidatePath(`/portal/work-orders/${id}`);
+    revalidatePath("/portal/reports");
+    revalidatePath("/portal/inventory");
+    revalidatePath(`/portal/inventory/${existing.equipmentId}`);
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: actionErrorMessage(error, "Could not update work order dates"),
+    };
+  }
 }
 
 /** Persist PM checklist step results without closing the work order. */
@@ -872,6 +981,7 @@ export async function generatePmWorkOrders(formData: FormData) {
   const { organizationId, userId } = await requireStaffSession();
   const month = String(formData.get("month") || "").trim(); // YYYY-MM
   if (!/^\d{4}-\d{2}$/.test(month)) throw new Error("month must be YYYY-MM");
+  const dateOpened = submittedDateTime(formData, "dateOpened", "Opened date");
 
   // Accept both names so callers can use the same facility value as the list
   // filters or the model field name. "ALL" (and an omitted value) means no
@@ -954,6 +1064,7 @@ export async function generatePmWorkOrders(formData: FormData) {
         assignedTechCode: eq.techAssigned1,
         assignedTechId,
         openedById: userId,
+        dateOpened,
       },
     });
     created++;
