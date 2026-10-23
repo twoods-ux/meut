@@ -5,6 +5,8 @@ import { PageHeader } from "@/components/ui";
 import { openCmWorkOrder } from "@/lib/actions";
 import { requireOrgSession } from "@/lib/tenant";
 import { FacilityEquipmentSelect } from "@/components/facility-equipment-select";
+import { DateTimeField } from "@/components/date-time-field";
+import { toDateTimeLocalValue } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -14,26 +16,29 @@ export default async function NewCmPage({
   searchParams: { equipmentId?: string; facility?: string };
 }) {
   const { organizationId } = await requireOrgSession();
-  const [facilities, equipment, techs] = await Promise.all([
+  const initialEquipmentId = searchParams.equipmentId || "";
+  const [facilities, initialEquipment, techs] = await Promise.all([
     prisma.hospital.findMany({
       where: { organizationId, active: true },
       orderBy: { name: "asc" },
       select: { id: true, name: true, hospId: true },
     }),
-    prisma.equipment.findMany({
-      where: { organizationId, status: "ACTIVE" },
-      orderBy: { controlNum: "asc" },
-      take: 1000,
-      select: {
-        id: true,
-        controlNum: true,
-        description: true,
-        model: true,
-        manufacturer: true,
-        hospitalId: true,
-        hospId: true,
-      },
-    }),
+    initialEquipmentId
+      ? prisma.equipment.findFirst({
+          where: { id: initialEquipmentId, organizationId },
+          select: {
+            id: true,
+            controlNum: true,
+            description: true,
+            model: true,
+            manufacturer: true,
+            serial: true,
+            deviceNum: true,
+            location: true,
+            hospId: true,
+          },
+        })
+      : Promise.resolve(null),
     prisma.user.findMany({
       where: { organizationId, active: true },
       orderBy: { name: "asc" },
@@ -56,9 +61,15 @@ export default async function NewCmPage({
       <form action={action} className="card max-w-2xl space-y-4">
         <FacilityEquipmentSelect
           facilities={facilities}
-          equipment={equipment}
           initialFacilityId={searchParams.facility || "ALL"}
-          initialEquipmentId={searchParams.equipmentId || ""}
+          initialEquipment={initialEquipment}
+        />
+        <DateTimeField
+          id="cm-date-opened"
+          name="dateOpened"
+          label="Date opened"
+          defaultValue={toDateTimeLocalValue(new Date())}
+          hint="Defaults to now. Pick any date and time."
         />
         <div>
           <label className="label">Priority</label>

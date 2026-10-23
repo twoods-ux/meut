@@ -6,6 +6,8 @@ import {
   lookupEquipmentByControlNum,
   openCmWorkOrder,
 } from "@/lib/actions";
+import { toDateTimeLocalValue } from "@/lib/utils";
+import { DateTimeField } from "@/components/date-time-field";
 
 type Tech = { id: string; name: string; techId: string | null; username: string };
 type Facility = { id: string; name: string; hospId: string };
@@ -17,6 +19,8 @@ type EqMatch = {
   model: string | null;
   location: string | null;
   hospId: string | null;
+  serial?: string | null;
+  deviceNum?: string | null;
 };
 
 function eqLabel(e: EqMatch) {
@@ -100,7 +104,7 @@ export function QuickEntryForm({
           });
         } else if (rows.length === 0) {
           setSelected(null);
-          setMessage({ ok: false, text: `No equipment for Control # ${q}` });
+          setMessage({ ok: false, text: `No equipment matches "${q}"` });
         } else {
           setMatches(rows);
           setShowSuggest(true);
@@ -214,7 +218,7 @@ export function QuickEntryForm({
                 setShowSuggest(true);
               }}
               onFocus={() => matches.length > 0 && setShowSuggest(true)}
-              placeholder="Type Control #…"
+              placeholder="Control #, serial / asset, or description"
               required
             />
             <button
@@ -238,6 +242,8 @@ export function QuickEntryForm({
                     <span className="text-slate-500">
                       {" "}
                       — {m.description || m.model || m.manufacturer || "equipment"}
+                      {m.serial ? ` · SN ${m.serial}` : ""}
+                      {m.deviceNum ? ` · Asset ${m.deviceNum}` : ""}
                       {m.location ? ` · ${m.location}` : ""}
                     </span>
                   </button>
@@ -269,6 +275,13 @@ export function QuickEntryForm({
             placeholder="What needs to be fixed?"
           />
         </div>
+        <DateTimeField
+          id="qe-date-opened"
+          name="dateOpened"
+          label="Date opened"
+          defaultValue={toDateTimeLocalValue(new Date())}
+          hint="Defaults to now. Pick any date and time."
+        />
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor="qe-priority">
