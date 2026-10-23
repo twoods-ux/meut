@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { StatusBadge } from "@/components/ui";
-import { formatPmLimit, type PmChecklistItem } from "@/lib/pm";
+import {
+  formatPmLimit,
+  pmStepOutOfLimit,
+  pmStepPrintReading,
+  pmStepPrintResult,
+  type PmChecklistItem,
+} from "@/lib/pm";
 
 function stepKindLabel(item: PmChecklistItem): string {
   if (item.stepType === "PASS_FAIL") return "Pass / fail";
@@ -87,7 +93,25 @@ function PmChecklistReadOnly({ items }: { items: PmChecklistItem[] }) {
   );
 }
 
+function StepResultOptions({ includePassFail }: { includePassFail: boolean }) {
+  return (
+    <>
+      <option value="">—</option>
+      {includePassFail ? (
+        <>
+          <option value="PASS">Pass</option>
+          <option value="FAIL">Fail</option>
+        </>
+      ) : null}
+      <option value="NA">N/A</option>
+    </>
+  );
+}
+
 function StepResponse({ item }: { item: PmChecklistItem }) {
+  if (item.result === "NA") {
+    return <StatusBadge status="N/A" />;
+  }
   if (item.stepType === "NUMERIC") {
     const limit = formatPmLimit(item.minValue, item.maxValue, null);
     return (
@@ -97,7 +121,7 @@ function StepResponse({ item }: { item: PmChecklistItem }) {
           {item.unit ? <span className="text-slate-500"> {item.unit}</span> : null}
         </p>
         {limit ? <p className="text-xs text-slate-500">Limit {limit}</p> : null}
-        {item.outOfRange ? (
+        {pmStepOutOfLimit(item) ? (
           <span className="badge bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-600/15">
             Out of range
           </span>
@@ -133,9 +157,11 @@ function PmChecklistStep({
   const [readingText, setReadingText] = useState(
     item.reading == null ? "" : String(item.reading)
   );
+  const [markedNa, setMarkedNa] = useState(item.result === "NA");
   const liveReading = readingText.trim() === "" ? null : Number(readingText);
   const liveOut =
     item.stepType === "NUMERIC" &&
+    !markedNa &&
     readingText.trim() !== "" &&
     Number.isFinite(liveReading) &&
     ((item.minValue != null && (liveReading as number) < item.minValue) ||
@@ -169,16 +195,26 @@ function PmChecklistStep({
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <span className="sr-only">Reading</span>
               <input
-                className="input w-36 py-1.5"
+                className="input w-36 py-1.5 disabled:bg-slate-100 disabled:text-slate-400"
                 name={`checklist_reading_${item.id}`}
                 inputMode="decimal"
-                value={readingText}
+                value={markedNa ? "" : readingText}
                 onChange={(event) => setReadingText(event.target.value)}
+                disabled={markedNa}
                 aria-invalid={liveOut || undefined}
               />
               {item.unit ? <span className="text-slate-500">{item.unit}</span> : null}
             </label>
-            <LimitHint item={item} />
+            <select
+              className="input w-[7.5rem] py-1 text-sm"
+              name={`checklist_result_${item.id}`}
+              value={markedNa ? "NA" : ""}
+              onChange={(event) => setMarkedNa(event.target.value === "NA")}
+              aria-label={`Result for step ${index + 1}`}
+            >
+              <StepResultOptions includePassFail={false} />
+            </select>
+            {markedNa ? null : <LimitHint item={item} />}
             {liveOut ? (
               <span className="badge bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-600/15">
                 Out of range
@@ -204,9 +240,7 @@ function PmChecklistStep({
             defaultValue={item.result || ""}
             aria-label={`Result for step ${index + 1}`}
           >
-            <option value="">—</option>
-            <option value="PASS">Pass</option>
-            <option value="FAIL">Fail</option>
+            <StepResultOptions includePassFail />
           </select>
         ) : null}
 
@@ -228,9 +262,7 @@ function PmChecklistStep({
               defaultValue={item.result || ""}
               aria-label={`Result for step ${index + 1}`}
             >
-              <option value="">—</option>
-              <option value="PASS">Pass</option>
-              <option value="FAIL">Fail</option>
+              <StepResultOptions includePassFail />
             </select>
           </div>
         ) : null}
@@ -244,12 +276,12 @@ export function PmChecklistPrint({ items }: { items: PmChecklistItem[] }) {
   return (
     <div className="mt-2 space-y-1.5">
       {items.map((item, index) => {
-        const limit = formatPmLimit(item.minValue, item.maxValue, item.unit);
         const checked =
           item.done ||
           item.result != null ||
           item.reading != null ||
           Boolean(item.note?.trim());
+        const readingLine = pmStepPrintReading(item);
         return (
           <div
             key={item.id}
@@ -267,22 +299,19 @@ export function PmChecklistPrint({ items }: { items: PmChecklistItem[] }) {
                 {item.required ? " *" : ""}
               </span>
               <span className="w-28 shrink-0 text-right text-xs uppercase text-slate-600">
-                {item.stepType === "PASS_FAIL" || item.stepType === "TEXT"
-                  ? item.result || (item.done ? "Done" : "")
-                  : ""}
+                {pmStepPrintResult(item)}
               </span>
             </div>
-            {item.stepType === "NUMERIC" ? (
-              <p className="pl-12 text-xs text-slate-600">
-                Reading: {item.reading == null ? "______" : item.reading}
-                {item.unit ? ` ${item.unit}` : ""}
-                {limit ? ` · limit ${limit}` : ""}
-                {item.outOfRange ? " · OUT OF RANGE" : ""}
-              </p>
+            {readingLine ? (
+              <p className="pl-12 text-xs text-slate-600">{readingLine}</p>
             ) : null}
             {item.stepType === "NOTE" ? (
               <p className="whitespace-pre-wrap pl-12 text-xs text-slate-600">
-                {item.note?.trim() ? item.note : "Note: ____________________"}
+                {item.result === "NA"
+                  ? "N/A"
+                  : item.note?.trim()
+                    ? item.note
+                    : "Note: ____________________"}
               </p>
             ) : null}
           </div>

@@ -289,8 +289,11 @@ export default async function PmDetailPage({
             <h2 className="font-semibold">PM steps</h2>
             <p className="mb-3 text-xs text-slate-500">
               Pass/fail steps, readings, and notes are saved with this work order.
-              A reading outside its limit is flagged. Required steps must be filled
-              in before you close. You still choose overall Pass or Fail when you close.
+              Choose N/A when a standard step does not apply to this device. N/A
+              counts as answered, is not a failure, and does not flag a reading out
+              of limit. A reading outside its limit is flagged. Required steps must
+              be filled in before you close. You still choose overall Pass or Fail
+              when you close.
             </p>
             <PmChecklistEditor items={checklist} sourceLabel={sourceLabel} />
           </div>

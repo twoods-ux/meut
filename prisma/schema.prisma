@@ -272,7 +272,7 @@ model WorkOrder {
   pmYear           Int?
   pmProc1          String?
   pmSchedule1      String?
-  /// Snapshot of the steps used on this WO (text, pass/fail, readings, notes)
+  /// Snapshot of the steps used on this WO (text, pass/fail, readings, notes). Step result is PASS, FAIL, or NA.
   pmChecklist      Json?
   /// CUSTOM | LIBRARY | GENERIC — how the snapshot was chosen
   pmProcedureSource String?

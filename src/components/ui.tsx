@@ -70,8 +70,10 @@ export function StatCard({
 
 export function StatusBadge({ status }: { status: string }) {
   const s = status.toUpperCase();
-  const cls =
-    s === "OPEN" || s === "ACTIVE" || s === "PASS"
+  const notApplicable = s === "NA" || s === "N/A";
+  const cls = notApplicable
+    ? "bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-500/15"
+    : s === "OPEN" || s === "ACTIVE" || s === "PASS"
       ? "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/15"
       : s === "CLOSED"
         ? "bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-500/10"
@@ -80,7 +82,7 @@ export function StatusBadge({ status }: { status: string }) {
           : s === "CUSTOMER"
             ? "bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-600/15"
             : "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-600/15";
-  return <span className={cn("badge", cls)}>{status}</span>;
+  return <span className={cn("badge", cls)}>{notApplicable ? "N/A" : status}</span>;
 }
 
 export function EmptyState({
