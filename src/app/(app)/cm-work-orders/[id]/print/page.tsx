@@ -14,6 +14,8 @@ import {
   WorkOrderReopenHistoryPrint,
   reopenHistoryFromEvents,
 } from "@/components/work-order-reopen";
+import { PrintSignFill } from "@/components/print-signature";
+import { closeTechnicianSignature } from "@/lib/print-signature";
 
 export const dynamic = "force-dynamic";
 
@@ -109,7 +111,18 @@ export default async function CmWorkOrderPrintPage({
         <WorkOrderReopenHistoryPrint events={reopenHistoryFromEvents(wo.events)} />
 
         <div className="print-sign-line">
-          <div className="line">Technician signature / date</div>
+          <div className="line">
+            <PrintSignFill
+              signature={closeTechnicianSignature({
+                status: wo.status,
+                type: "CM",
+                dateClosed: wo.dateClosed,
+                assignedTech: wo.assignedTech,
+                closedBy: wo.closedBy,
+              })}
+            />
+            Technician signature / date
+          </div>
           <div className="line">Supervisor signature / date</div>
         </div>
 

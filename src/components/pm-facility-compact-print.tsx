@@ -6,6 +6,8 @@ import {
   type PmChecklistItem,
 } from "@/lib/pm";
 import type { PmWorkOrderPrintModel } from "@/components/pm-work-order-print";
+import { PrintSignFill } from "@/components/print-signature";
+import { closeTechnicianSignature } from "@/lib/print-signature";
 
 function dash(value: string | number | null | undefined): string {
   if (value == null) return "—";
@@ -189,7 +191,19 @@ export function PmFacilityCompactSheet({
 
           <h2 className="pm-compact-section">Signatures</h2>
           <div className="pm-compact-signs">
-            <div>Technician / date</div>
+            <div>
+              <PrintSignFill
+                compact
+                signature={closeTechnicianSignature({
+                  status: wo.status,
+                  type: "PM",
+                  dateClosed: wo.dateClosed,
+                  assignedTech: wo.assignedTech,
+                  closedBy: wo.closedBy,
+                })}
+              />
+              Technician / date
+            </div>
             <div>Supervisor / date</div>
           </div>
         </footer>
