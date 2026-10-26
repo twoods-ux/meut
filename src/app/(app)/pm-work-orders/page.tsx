@@ -636,9 +636,9 @@ export default async function PmPage({
           <Printer className="h-4 w-4" /> Print facility PM reports
         </button>
         <p className="w-full text-xs text-slate-500">
-          Prints the full PM report for each work order at the selected facility
-          (steps, readings, logo, watermark, and reopen history), one after another.
-          Choose a month, an opened-date range, or both. At most 200 reports are
+          Prints one US Letter page per work order at the selected facility
+          (steps, readings, logo, watermark, and reopen history). Choose a
+          month, an opened-date range, or both. At most 200 reports are
           included; narrow the range if there are more.
         </p>
       </form>
