@@ -50,6 +50,13 @@ import {
   loadMatchTemplates,
 } from "./pm-procedure-store";
 import { equipmentLookupWhere } from "./equipment-lookup";
+import { buildWorkOrderWhere } from "./work-order-filters";
+import {
+  parseBulkPmDeleteForm,
+  partitionPmBulkDelete,
+  workOrderDeleteError,
+  workOrderDeleteRefusal,
+} from "./work-order-delete";
 import { parseDateTimeLocal, workOrderCloseBeforeOpen } from "./utils";
 import {
   WORK_ORDER_REOPEN_EVENT,
@@ -1113,17 +1120,9 @@ export async function deleteOpenWorkOrder(
         equipmentId: true,
       },
     });
-    if (!existing) {
-      return { ok: false, error: "Work order not found" };
-    }
-    if (existing.type !== "PM" && existing.type !== "CM") {
-      return { ok: false, error: "Only PM or CM work orders can be deleted" };
-    }
-    if (existing.status !== "OPEN") {
-      return {
-        ok: false,
-        error: "Only open work orders can be deleted — closed records are kept for history",
-      };
+    const refusal = workOrderDeleteRefusal(existing);
+    if (refusal || !existing) {
+      return { ok: false, error: workOrderDeleteError(refusal ?? "not_found") };
     }
     await prisma.workOrder.delete({ where: { id: existing.id } });
     revalidatePath("/pm-work-orders");
@@ -1144,6 +1143,104 @@ export async function deleteOpenWorkOrder(
     return {
       ok: false,
       error: actionErrorMessage(error, "Could not delete work order"),
+    };
+  }
+}
+
+export type DeleteSelectedPmResult =
+  | {
+      ok: true;
+      deleted: number;
+      skippedClosed: number;
+      skippedOther: number;
+    }
+  | { ok: false; error: string };
+
+/**
+ * Staff-only: delete the selected OPEN PM work orders in this organization.
+ * Closed PMs are left in place and counted as skipped. Equipment is not deleted.
+ * `selection=filter` is every PM matching the list filter (all pages), minus exclusions.
+ */
+export async function deleteSelectedPmWorkOrders(
+  formData: FormData
+): Promise<DeleteSelectedPmResult> {
+  try {
+    const { organizationId } = await requireStaffSession();
+    const parsed = parseBulkPmDeleteForm(formData);
+    if (!parsed.ok) return parsed;
+
+    let rows: Array<{
+      id: string;
+      type: string;
+      status: string;
+      equipmentId: string;
+    }> = [];
+    let missing = 0;
+
+    if (parsed.request.selection === "ids") {
+      rows = await prisma.workOrder.findMany({
+        where: {
+          id: { in: parsed.request.ids },
+          organizationId,
+        },
+        select: { id: true, type: true, status: true, equipmentId: true },
+      });
+      const found = new Set(rows.map((row) => row.id));
+      missing = parsed.request.ids.filter((id) => !found.has(id)).length;
+    } else {
+      const where = buildWorkOrderWhere(
+        organizationId,
+        "PM",
+        parsed.request.filters
+      );
+      const matched = await prisma.workOrder.findMany({
+        where,
+        select: { id: true, type: true, status: true, equipmentId: true },
+      });
+      const excluded = new Set(parsed.request.excludeIds);
+      rows = matched.filter((row) => !excluded.has(row.id));
+    }
+
+    const plan = partitionPmBulkDelete(rows);
+    let deleted = 0;
+    if (plan.deletable.length > 0) {
+      const result = await prisma.workOrder.deleteMany({
+        where: {
+          id: { in: plan.deletable.map((row) => row.id) },
+          organizationId,
+          type: "PM",
+          status: "OPEN",
+        },
+      });
+      deleted = result.count;
+    }
+    const noLongerOpen = plan.deletable.length - deleted;
+    const skippedClosed = plan.skippedClosed.length + noLongerOpen;
+    const skippedOther = plan.skippedOther.length + missing;
+    if (deleted === 0 && skippedClosed === 0 && skippedOther === 0) {
+      return { ok: false, error: "Select at least one PM work order" };
+    }
+
+    revalidatePath("/pm-work-orders");
+    revalidatePath("/cm-work-orders");
+    revalidatePath("/equipment");
+    revalidatePath("/dashboard");
+    revalidatePath("/reports");
+    revalidatePath("/quick-close");
+    const equipmentIds = new Set<string>();
+    for (const row of plan.deletable) {
+      revalidatePath(`/pm-work-orders/${row.id}`);
+      equipmentIds.add(row.equipmentId);
+    }
+    for (const equipmentId of Array.from(equipmentIds)) {
+      revalidatePath(`/equipment/${equipmentId}`);
+    }
+
+    return { ok: true, deleted, skippedClosed, skippedOther };
+  } catch (error) {
+    return {
+      ok: false,
+      error: actionErrorMessage(error, "Could not delete work orders"),
     };
   }
 }

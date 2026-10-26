@@ -16,6 +16,12 @@ import {
   workOrderPrintHref,
 } from "@/lib/work-order-filters";
 import { Printer, Search } from "lucide-react";
+import {
+  PmBulkDelete,
+  PmRowCheckbox,
+  PmSelectAllCheckbox,
+} from "@/components/pm-bulk-delete";
+import { formatBulkPmDeleteResult } from "@/lib/work-order-delete";
 import { PmDueBadge } from "@/components/pm-due-badge";
 import {
   endOfMonth,
@@ -28,6 +34,13 @@ import {
 } from "@/lib/pm-generate";
 
 export const dynamic = "force-dynamic";
+
+function parseCount(value: string | undefined): number | null {
+  if (value == null || value.trim() === "") return null;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0 || n > 100000) return null;
+  return n;
+}
 
 export default async function PmPage({
   searchParams,
@@ -57,6 +70,9 @@ export default async function PmPage({
   const pmError = oneParam(raw.pmError)?.trim().slice(0, 300) || "";
   const generatedId = oneParam(raw.generated)?.trim() || "";
   const pmExistsId = oneParam(raw.pmExists)?.trim() || "";
+  const bulkDeleted = parseCount(oneParam(raw.bulkDeleted));
+  const bulkSkippedClosed = parseCount(oneParam(raw.bulkSkippedClosed)) ?? 0;
+  const bulkSkippedOther = parseCount(oneParam(raw.bulkSkippedOther)) ?? 0;
   const openedDefault = toDateTimeLocalValue(new Date());
 
   const where = buildWorkOrderWhere(organizationId, "PM", filters);
@@ -67,7 +83,8 @@ export default async function PmPage({
   const todayStart = startOfDay(now);
   const defaultMonth = currentPmMonth(now);
 
-  const [facilities, techs, total, wos, onPmCount] = await Promise.all([
+  const [facilities, techs, total, openMatchCount, closedMatchCount, wos, onPmCount] =
+    await Promise.all([
     prisma.hospital.findMany({
       where: { organizationId, active: true },
       orderBy: { name: "asc" },
@@ -83,6 +100,12 @@ export default async function PmPage({
       select: { id: true, name: true, techId: true, username: true },
     }),
     prisma.workOrder.count({ where }),
+    prisma.workOrder.count({
+      where: { AND: [where, { status: "OPEN" }] },
+    }),
+    prisma.workOrder.count({
+      where: { AND: [where, { status: "CLOSED" }] },
+    }),
     prisma.workOrder.findMany({
       where,
       include: { equipment: true, assignedTech: true },
@@ -237,6 +260,14 @@ export default async function PmPage({
   const showingTo = Math.min(page * WORK_ORDER_PAGE_SIZE, total);
   const listFilters = { ...filters, page };
   const printHref = workOrderPrintHref("PM", listFilters);
+  const dueQuery = new URLSearchParams();
+  if (dueFacility !== "ALL") dueQuery.set("dueFacility", dueFacility);
+  if (dueView && dueView !== "overdue") dueQuery.set("due", dueView);
+  const dueQueryString = dueQuery.toString();
+  const listHref = workOrderListHref("PM", listFilters);
+  const bulkReturnPath = dueQueryString
+    ? `${listHref}${listHref.includes("?") ? "&" : "?"}${dueQueryString}`
+    : listHref;
   const facilityValue = filters.facilityId || "ALL";
   const techValue = filters.techId || "ALL";
   const showClosedCols =
@@ -277,6 +308,29 @@ export default async function PmPage({
         >
           <p className="font-medium">Could not delete work order</p>
           <p className="mt-1">{deleteError}</p>
+        </div>
+      ) : null}
+      {bulkDeleted != null ? (
+        <div
+          role="status"
+          className={
+            bulkDeleted > 0
+              ? "mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
+              : "mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          }
+        >
+          <p className="font-medium">
+            {bulkDeleted > 0 ? "PM work orders deleted" : "No PM work orders deleted"}
+          </p>
+          <p className="mt-1">
+            {formatBulkPmDeleteResult({
+              deleted: bulkDeleted,
+              skippedClosed: bulkSkippedClosed,
+              skippedOther: bulkSkippedOther,
+            })}
+            .
+            {bulkDeleted > 0 ? " Equipment records were not changed." : ""}
+          </p>
         </div>
       ) : null}
       {closeError ? (
@@ -708,10 +762,29 @@ export default async function PmPage({
       {rows.length === 0 ? (
         <EmptyState message="No PM work orders match these filters. Generate for a month above if needed." />
       ) : (
+        <PmBulkDelete
+          returnPath={bulkReturnPath}
+          openMatchCount={openMatchCount}
+          closedMatchCount={closedMatchCount}
+          totalPages={totalPages}
+          filters={{
+            q: filters.q,
+            status: filters.status,
+            facility: filters.facilityId || "ALL",
+            from: filters.from || "",
+            to: filters.to || "",
+            tech: filters.techId || "ALL",
+            pmResult: filters.pmResult,
+            pmMonth: filters.pmMonth || "",
+          }}
+        >
         <div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr>
+                <th className="w-10 print:hidden">
+                  <PmSelectAllCheckbox />
+                </th>
                 <th>WO</th>
                 <th>PM Month</th>
                 <th>Control #</th>
@@ -728,6 +801,18 @@ export default async function PmPage({
             <tbody className="divide-y divide-slate-100">
               {rows.map((wo) => (
                 <tr key={wo.id}>
+                  <td className="print:hidden">
+                    <PmRowCheckbox
+                      id={wo.id}
+                      woNumber={wo.woNumber}
+                      selectable={wo.status === "OPEN"}
+                      blockedTitle={
+                        wo.status === "CLOSED"
+                          ? "Closed work orders cannot be deleted"
+                          : "Only open work orders can be deleted"
+                      }
+                    />
+                  </td>
                   <td className="font-medium">
                     <Link href={`/pm-work-orders/${wo.id}`} className="link-brand">
                       {wo.woNumber}
@@ -832,6 +917,7 @@ export default async function PmPage({
             </tbody>
           </table>
         </div>
+        </PmBulkDelete>
       )}
 
       {totalPages > 1 ? (
