@@ -10,7 +10,7 @@
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:pm-procedures": "tsx scripts/seed-pm-procedures.ts",
-    "test": "tsx --test src/lib/pm.test.ts src/lib/pm-procedures.test.ts src/lib/work-order-dates.test.ts src/lib/equipment-lookup.test.ts src/lib/work-order-reopen.test.ts",
+    "test": "tsx --test src/lib/pm.test.ts src/lib/pm-procedures.test.ts src/lib/pm-generate.test.ts src/lib/work-order-dates.test.ts src/lib/equipment-lookup.test.ts src/lib/work-order-reopen.test.ts",
     "db:reset": "prisma db push --force-reset && tsx prisma/seed.ts",
     "import:mdb": "tsx scripts/import-mdb.ts",
     "postinstall": "prisma generate",

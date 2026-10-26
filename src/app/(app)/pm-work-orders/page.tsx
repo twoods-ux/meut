@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader, StatusBadge, EmptyState, StatCard } from "@/components/ui";
 import { formatDate, toDateTimeLocalValue } from "@/lib/utils";
-import { generatePmWorkOrders, closeWorkOrder } from "@/lib/actions";
+import { generatePmWorkOrders, generateEquipmentPmWorkOrder, closeWorkOrder } from "@/lib/actions";
 import { revalidatePath } from "next/cache";
 import { DateTimeField } from "@/components/date-time-field";
 import { requireOrgSession } from "@/lib/tenant";
@@ -22,6 +22,10 @@ import {
   startOfDay,
   startOfMonth,
 } from "@/lib/pm";
+import {
+  currentPmMonth,
+  scheduledPmsForEquipmentWhere,
+} from "@/lib/pm-generate";
 
 export const dynamic = "force-dynamic";
 
@@ -50,15 +54,18 @@ export default async function PmPage({
   const deletedWo = oneParam(raw.deleted)?.trim() || "";
   const deleteError = oneParam(raw.error)?.trim().slice(0, 300) || "";
   const closeError = oneParam(raw.closeError)?.trim().slice(0, 300) || "";
+  const pmError = oneParam(raw.pmError)?.trim().slice(0, 300) || "";
+  const generatedId = oneParam(raw.generated)?.trim() || "";
+  const pmExistsId = oneParam(raw.pmExists)?.trim() || "";
   const openedDefault = toDateTimeLocalValue(new Date());
 
   const where = buildWorkOrderWhere(organizationId, "PM", filters);
 
-  const now = new Date(); // shadow later defaultMonth uses now — keep consistent
+  const now = new Date();
   const monthStart = startOfMonth(now);
   const monthEnd = endOfMonth(now);
   const todayStart = startOfDay(now);
-  const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const defaultMonth = currentPmMonth(now);
 
   const [facilities, techs, total, wos, onPmCount] = await Promise.all([
     prisma.hospital.findMany({
@@ -136,9 +143,66 @@ export default async function PmPage({
     }),
   ]);
 
+  const [existingDuePms, generatedPm, duplicatePm] = await Promise.all([
+    dueList.length === 0
+      ? Promise.resolve([])
+      : prisma.workOrder.findMany({
+          where: scheduledPmsForEquipmentWhere(
+            organizationId,
+            defaultMonth,
+            dueList.map((e) => e.id)
+          ),
+          select: { id: true, woNumber: true, equipmentId: true },
+          orderBy: { woNumber: "desc" },
+        }),
+    generatedId
+      ? prisma.workOrder.findFirst({
+          where: { id: generatedId, organizationId, type: "PM" },
+          select: { id: true, woNumber: true, pmMonth: true, controlNum: true },
+        })
+      : Promise.resolve(null),
+    pmExistsId
+      ? prisma.workOrder.findFirst({
+          where: {
+            id: pmExistsId,
+            organizationId,
+            type: "PM",
+            status: { not: "CANCELLED" },
+          },
+          select: { id: true, woNumber: true, pmMonth: true, controlNum: true },
+        })
+      : Promise.resolve(null),
+  ]);
+  const duePmByEquipment = new Map<string, { id: string; woNumber: number }>();
+  for (const wo of existingDuePms) {
+    if (!duePmByEquipment.has(wo.equipmentId)) {
+      duePmByEquipment.set(wo.equipmentId, {
+        id: wo.id,
+        woNumber: wo.woNumber,
+      });
+    }
+  }
+
   async function generateAction(formData: FormData) {
     "use server";
     await generatePmWorkOrders(formData);
+  }
+
+  async function generateOneAction(formData: FormData) {
+    "use server";
+    const result = await generateEquipmentPmWorkOrder(formData);
+    const params = new URLSearchParams();
+    if (dueFacility && dueFacility !== "ALL") params.set("dueFacility", dueFacility);
+    if (dueView && dueView !== "overdue") params.set("due", dueView);
+    if (result.ok) {
+      params.set("generated", result.id);
+    } else if ("duplicate" in result) {
+      params.set("pmExists", result.id);
+    } else {
+      params.set("pmError", result.error.slice(0, 300));
+    }
+    const q = params.toString();
+    redirect(q ? `/pm-work-orders?${q}` : "/pm-work-orders");
   }
 
   async function closeAction(formData: FormData) {
@@ -224,6 +288,50 @@ export default async function PmPage({
           <p className="mt-1">{closeError}</p>
         </div>
       ) : null}
+      {generatedPm ? (
+        <div
+          role="status"
+          className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
+        >
+          <p className="font-medium">PM work order created</p>
+          <p className="mt-1">
+            PM #{generatedPm.woNumber} was created
+            {generatedPm.controlNum ? ` for control # ${generatedPm.controlNum}` : ""}
+            {generatedPm.pmMonth ? ` (${generatedPm.pmMonth})` : ""}.{" "}
+            <Link href={`/pm-work-orders/${generatedPm.id}`} className="link-brand">
+              Open WO #{generatedPm.woNumber}
+            </Link>
+          </p>
+        </div>
+      ) : null}
+      {duplicatePm ? (
+        <div
+          role="status"
+          className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+        >
+          <p className="font-medium">PM work order already exists</p>
+          <p className="mt-1">
+            {duplicatePm.controlNum
+              ? `Control # ${duplicatePm.controlNum} already has`
+              : "This equipment already has"}{" "}
+            PM #{duplicatePm.woNumber}
+            {duplicatePm.pmMonth ? ` for ${duplicatePm.pmMonth}` : ""}. No new
+            work order was created.{" "}
+            <Link href={`/pm-work-orders/${duplicatePm.id}`} className="link-brand">
+              Open WO #{duplicatePm.woNumber}
+            </Link>
+          </p>
+        </div>
+      ) : null}
+      {pmError ? (
+        <div
+          role="alert"
+          className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
+        >
+          <p className="font-medium">Could not generate PM work order</p>
+          <p className="mt-1">{pmError}</p>
+        </div>
+      ) : null}
 
       <div className="mb-6 print:hidden">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
@@ -293,31 +401,49 @@ export default async function PmPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {dueList.map((e) => (
-                  <tr key={e.id}>
-                    <td>
-                      <Link href={`/equipment/${e.id}`} className="link-brand">
-                        {e.controlNum}
-                      </Link>
-                    </td>
-                    <td>{e.hospital?.name || e.hospId || "—"}</td>
-                    <td className="max-w-[220px] truncate">
-                      {e.description || "—"}
-                    </td>
-                    <td>{e.pmSchedule1 || "—"}</td>
-                    <td>
-                      <PmDueBadge pmNextDue={e.pmNextDue} compact />
-                    </td>
-                    <td className="print:hidden">
-                      <Link
-                        href={`#generate-pm`}
-                        className="link-brand text-xs"
-                      >
-                        Generate PM
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
+                {dueList.map((e) => {
+                  const existingPm = duePmByEquipment.get(e.id);
+                  return (
+                    <tr key={e.id}>
+                      <td>
+                        <Link href={`/equipment/${e.id}`} className="link-brand">
+                          {e.controlNum}
+                        </Link>
+                      </td>
+                      <td>{e.hospital?.name || e.hospId || "—"}</td>
+                      <td className="max-w-[220px] truncate">
+                        {e.description || "—"}
+                      </td>
+                      <td>{e.pmSchedule1 || "—"}</td>
+                      <td>
+                        <PmDueBadge pmNextDue={e.pmNextDue} compact />
+                      </td>
+                      <td className="print:hidden">
+                        {existingPm ? (
+                          <Link
+                            href={`/pm-work-orders/${existingPm.id}`}
+                            className="link-brand text-xs"
+                            title={`This equipment already has PM #${existingPm.woNumber} for ${defaultMonth}`}
+                          >
+                            Existing PM #{existingPm.woNumber}
+                          </Link>
+                        ) : (
+                          <form action={generateOneAction}>
+                            <input type="hidden" name="equipmentId" value={e.id} />
+                            <input type="hidden" name="month" value={defaultMonth} />
+                            <button
+                              type="submit"
+                              className="link-brand border-0 bg-transparent p-0 text-xs"
+                              title={`Create a PM work order for ${defaultMonth}, opened now`}
+                            >
+                              Generate PM
+                            </button>
+                          </form>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -336,7 +462,7 @@ export default async function PmPage({
             name="month"
             defaultValue={defaultMonth}
             required
-            pattern="\d{4}-\d{2}"
+            pattern="\d{4}-(0[1-9]|1[0-2])"
           />
         </div>
         <DateTimeField
