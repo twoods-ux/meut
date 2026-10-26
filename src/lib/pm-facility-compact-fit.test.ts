@@ -6,6 +6,7 @@ describe("pmCompactFitScale", () => {
   it("leaves a sheet alone when it already fits", () => {
     assert.equal(pmCompactFitScale(400, 900), 1);
     assert.equal(pmCompactFitScale(900, 900), 1);
+    assert.equal(pmCompactFitScale(901, 900), 1);
   });
 
   it("shrinks an overflowing sheet to the page", () => {

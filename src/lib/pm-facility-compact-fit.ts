@@ -2,7 +2,7 @@
 export function pmCompactFitScale(needed: number, available: number): number {
   if (!Number.isFinite(needed) || !Number.isFinite(available)) return 1;
   if (available <= 1 || needed <= 0) return 1;
-  if (needed <= available) return 1;
+  if (needed <= available + 1) return 1;
   return (available - 1) / needed;
 }
 
@@ -33,7 +33,7 @@ export function fitPmCompactSheets(force = false): void {
       (Number.parseFloat(style.paddingTop) || 0) +
       (Number.parseFloat(style.paddingBottom) || 0);
     const available = sheet.clientHeight - pad;
-    const needed = scaleEl.getBoundingClientRect().height || scaleEl.scrollHeight;
+    const needed = Math.max(scaleEl.scrollHeight, scaleEl.offsetHeight);
     const scale = pmCompactFitScale(needed, available);
     if (scale < 1) scaleEl.style.setProperty("zoom", String(scale));
     else scaleEl.style.removeProperty("zoom");
