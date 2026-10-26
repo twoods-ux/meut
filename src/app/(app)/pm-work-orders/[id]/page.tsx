@@ -28,6 +28,11 @@ import {
   reopenHistoryFromEvents,
 } from "@/components/work-order-reopen";
 import { canShowReopenWorkOrder, WORK_ORDER_REOPEN_EVENT } from "@/lib/work-order-reopen";
+import {
+  PmCloseSubmit,
+  PmCloseTechSelect,
+  PmCloseTechState,
+} from "@/components/pm-close-tech";
 
 export const dynamic = "force-dynamic";
 
@@ -65,7 +70,20 @@ export default async function PmDetailPage({
   });
   if (!wo) notFound();
 
-  const templates = await loadMatchTemplates(prisma, organizationId);
+  const [templates, techs] = await Promise.all([
+    loadMatchTemplates(prisma, organizationId),
+    wo.status === "OPEN"
+      ? prisma.user.findMany({
+          where: {
+            organizationId,
+            active: true,
+            role: { in: ["TECH", "SUPERVISOR"] },
+          },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, techId: true, username: true },
+        })
+      : Promise.resolve([]),
+  ]);
   const checklistView = checklistForWorkOrder({
     status: wo.status,
     pmChecklist: wo.pmChecklist,
@@ -284,6 +302,7 @@ export default async function PmDetailPage({
       </div>
 
       {wo.status === "OPEN" ? (
+        <PmCloseTechState>
         <form className="card max-w-3xl space-y-6">
           <div>
             <h2 className="font-semibold">PM steps</h2>
@@ -304,6 +323,7 @@ export default async function PmDetailPage({
               A Pass close records last completed and advances next due (by PM
               schedule interval, or +1 month if unset).
             </p>
+            <PmCloseTechSelect id="pm-close-tech" techs={techs} />
             <div>
               <label className="label">Overall result *</label>
               <select
@@ -356,20 +376,18 @@ export default async function PmDetailPage({
               <button
                 type="submit"
                 formAction={saveChecklistAction}
+                formNoValidate
                 className="btn-secondary"
               >
                 Save steps
               </button>
-              <button
-                type="submit"
-                formAction={closeAction}
-                className="btn-primary"
-              >
+              <PmCloseSubmit formAction={closeAction} className="btn-primary">
                 Close PM
-              </button>
+              </PmCloseSubmit>
             </div>
           </div>
         </form>
+        </PmCloseTechState>
       ) : (
         <>
           <div className="card mb-6 space-y-3">

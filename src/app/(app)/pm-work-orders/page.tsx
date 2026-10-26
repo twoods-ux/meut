@@ -24,6 +24,11 @@ import {
 import { formatBulkPmDeleteResult } from "@/lib/work-order-delete";
 import { PmDueBadge } from "@/components/pm-due-badge";
 import {
+  PmCloseSubmit,
+  PmCloseTechSelect,
+  PmCloseTechState,
+} from "@/components/pm-close-tech";
+import {
   endOfMonth,
   startOfDay,
   startOfMonth,
@@ -947,6 +952,7 @@ export default async function PmPage({
                   </td>
                   <td className="print:hidden">
                     {wo.status === "OPEN" ? (
+                      <PmCloseTechState>
                       <form
                         action={closeAction}
                         className="flex flex-wrap items-center gap-1"
@@ -988,13 +994,17 @@ export default async function PmPage({
                           title="Date closed"
                           aria-label="Date closed"
                         />
-                        <button
-                          type="submit"
-                          className="btn-secondary text-xs py-1"
-                        >
+                        <PmCloseTechSelect
+                          id={`pm-close-tech-${wo.id}`}
+                          techs={techs}
+                          compact
+                          className="input w-[9.5rem] py-1 text-xs"
+                        />
+                        <PmCloseSubmit className="btn-secondary text-xs py-1">
                           Close
-                        </button>
+                        </PmCloseSubmit>
                       </form>
+                      </PmCloseTechState>
                     ) : (
                       <span className="text-xs text-slate-400">
                         {wo.laborHours ?? "—"}h
