@@ -10,6 +10,8 @@ import {
   WorkOrderReopenHistoryPrint,
   reopenHistoryFromEvents,
 } from "@/components/work-order-reopen";
+import { PrintSignFill } from "@/components/print-signature";
+import { closeTechnicianSignature } from "@/lib/print-signature";
 
 /** Fields the single PM print report shows. Callers load them for one work order. */
 export type PmWorkOrderPrintModel = {
@@ -28,8 +30,16 @@ export type PmWorkOrderPrintModel = {
   comments: string | null;
   pmTemplateName: string | null;
   pmTemplateVersion: number | null;
-  assignedTech: { name: string } | null;
-  closedBy: { name: string } | null;
+  assignedTech: {
+    name: string;
+    firstName?: string | null;
+    lastName?: string | null;
+  } | null;
+  closedBy: {
+    name: string;
+    firstName?: string | null;
+    lastName?: string | null;
+  } | null;
   equipment: {
     controlNum: string;
     description: string | null;
@@ -164,7 +174,18 @@ export function PmWorkOrderPrintDocument({
       <WorkOrderReopenHistoryPrint events={reopenHistoryFromEvents(wo.events)} />
 
       <div className="print-sign-line">
-        <div className="line">Technician signature / date</div>
+        <div className="line">
+          <PrintSignFill
+            signature={closeTechnicianSignature({
+              status: wo.status,
+              type: "PM",
+              dateClosed: wo.dateClosed,
+              assignedTech: wo.assignedTech,
+              closedBy: wo.closedBy,
+            })}
+          />
+          Technician signature / date
+        </div>
         <div className="line">Supervisor signature / date</div>
       </div>
 

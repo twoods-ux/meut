@@ -227,12 +227,32 @@ export const PM_FACILITY_COMPACT_CSS = `
 }
 
 .pm-compact-signs div {
+  position: relative;
   border-bottom: 0.6pt solid #64748b;
   padding-top: 0.28in;
   color: #64748b;
   font-size: 7pt;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+.pm-compact-sign-fill {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  height: 0.28in;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.12in;
+  padding-bottom: 1px;
+  color: #0f172a;
+  font-size: 8pt;
+  font-weight: 600;
+  letter-spacing: normal;
+  line-height: 1.1;
+  text-transform: none;
 }
 
 .pm-compact-watermark {
