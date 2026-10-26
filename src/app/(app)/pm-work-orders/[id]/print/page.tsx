@@ -1,22 +1,12 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireOrgSession } from "@/lib/tenant";
-import {
-  PrintHeader,
-  PrintToolbar,
-  PrintField,
-  PrintBlock,
-} from "@/components/print-header";
-import { formatDate, formatDateTime } from "@/lib/utils";
-import { PmChecklistPrint } from "@/components/pm-checklist";
+import { PrintToolbar } from "@/components/print-header";
 import { loadMatchTemplates } from "@/lib/pm-procedure-store";
 import { checklistForWorkOrder } from "@/lib/pm-procedures";
 import { resolveRouteParams } from "@/lib/route-params";
 import { WORK_ORDER_REOPEN_EVENT } from "@/lib/work-order-reopen";
-import {
-  WorkOrderReopenHistoryPrint,
-  reopenHistoryFromEvents,
-} from "@/components/work-order-reopen";
+import { PmWorkOrderPrintDocument } from "@/components/pm-work-order-print";
 
 export const dynamic = "force-dynamic";
 
@@ -60,9 +50,6 @@ export default async function PmWorkOrderPrintPage({
     pmTemplateId: wo.equipment.pmTemplateId,
     templates,
   });
-  const procedureCaption = wo.pmTemplateName
-    ? `${wo.pmTemplateName}${wo.pmTemplateVersion != null ? ` v${wo.pmTemplateVersion}` : ""}`
-    : null;
 
   const org = organizationName || "Organization";
 
@@ -72,100 +59,12 @@ export default async function PmWorkOrderPrintPage({
         backHref="/pm-work-orders"
         backLabel="Back to PM list"
       />
-      <article className="print-document">
-        <PrintHeader
-          organizationName={org}
-          logoSrc={printLogoSrc}
-          title={`PM Work Order #${wo.woNumber}`}
-          subtitle="Preventive Maintenance"
-        />
-
-        <div className="print-grid-3">
-          <PrintField label="WO #" value={wo.woNumber} />
-          <PrintField label="Status" value={wo.status} />
-          <PrintField label="PM month" value={wo.pmMonth} />
-          <PrintField
-            label="Result"
-            value={
-              wo.pmResult === "PASS"
-                ? "Pass"
-                : wo.pmResult === "FAIL"
-                  ? "Fail"
-                  : wo.status === "CLOSED"
-                    ? "—"
-                    : null
-            }
-          />
-          <PrintField label="Date closed" value={formatDate(wo.dateClosed)} />
-        </div>
-
-        <h2 className="print-section-title">Equipment</h2>
-        <div className="print-grid-3">
-          <PrintField
-            label="Control #"
-            value={wo.controlNum || wo.equipment.controlNum}
-          />
-          <PrintField
-            label="Description"
-            value={wo.equipment.description || wo.equipment.model}
-          />
-          <PrintField label="Serial" value={wo.equipment.serial} />
-          <PrintField label="Manufacturer" value={wo.equipment.manufacturer} />
-          <PrintField label="Model" value={wo.equipment.model} />
-          <PrintField label="Location" value={wo.equipment.location} />
-          <PrintField label="Facility" value={wo.equipment.hospital?.name} />
-          <PrintField label="Department" value={wo.equipment.department?.name} />
-          <PrintField
-            label="PM schedule"
-            value={wo.pmSchedule1 || wo.equipment.pmSchedule1}
-          />
-          <PrintField
-            label="Next due"
-            value={formatDate(wo.equipment.pmNextDue)}
-          />
-        </div>
-
-        <h2 className="print-section-title">Work Order</h2>
-        <div className="print-grid-3">
-          <PrintField label="Opened" value={formatDateTime(wo.dateOpened)} />
-          <PrintField
-            label="Assigned tech"
-            value={wo.assignedTech?.name || wo.assignedTechCode}
-          />
-          <PrintField label="Closed" value={formatDateTime(wo.dateClosed)} />
-          <PrintField label="Closed by" value={wo.closedBy?.name} />
-          <PrintField
-            label="Labor hours"
-            value={wo.laborHours != null ? wo.laborHours : null}
-          />
-        </div>
-
-        <PrintBlock label="Work requested" value={wo.workRequested} />
-        <PrintBlock label="Work performed" value={wo.workPerformed} />
-
-        {checklistView.items.length > 0 ? (
-          <>
-            <h2 className="print-section-title">PM steps</h2>
-            {procedureCaption ? (
-              <p className="mb-1 text-xs text-slate-500">{procedureCaption}</p>
-            ) : null}
-            <PmChecklistPrint items={checklistView.items} />
-          </>
-        ) : null}
-
-        <PrintBlock label="Comments" value={wo.comments} blankLines={3} />
-
-        <WorkOrderReopenHistoryPrint events={reopenHistoryFromEvents(wo.events)} />
-
-        <div className="print-sign-line">
-          <div className="line">Technician signature / date</div>
-          <div className="line">Supervisor signature / date</div>
-        </div>
-
-        <p className="mt-6 text-[10px] text-slate-400 print:mt-4">
-          Generated {formatDate(new Date())} · M.E.U.T. PM Work Order
-        </p>
-      </article>
+      <PmWorkOrderPrintDocument
+        organizationName={org}
+        logoSrc={printLogoSrc}
+        wo={wo}
+        checklistItems={checklistView.items}
+      />
     </div>
   );
 }
