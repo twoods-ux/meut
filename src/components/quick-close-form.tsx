@@ -5,6 +5,12 @@ import Link from "next/link";
 import { closeWorkOrder, findOpenWorkOrders } from "@/lib/actions";
 import { StatusBadge } from "@/components/ui";
 import { formatDate, toDateTimeLocalValue } from "@/lib/utils";
+import {
+  PmCloseSubmit,
+  PmCloseTechSelect,
+  PmCloseTechState,
+  type PmCloseTechOption,
+} from "@/components/pm-close-tech";
 
 type OpenWo = {
   id: string;
@@ -24,7 +30,7 @@ type OpenWo = {
   assignedTech: { id: string; name: string; techId: string | null } | null;
 };
 
-export function QuickCloseForm() {
+export function QuickCloseForm({ techs }: { techs: PmCloseTechOption[] }) {
   const woRef = useRef<HTMLInputElement>(null);
   const [woNumber, setWoNumber] = useState("");
   const [controlNum, setControlNum] = useState("");
@@ -194,6 +200,7 @@ export function QuickCloseForm() {
                 </Link>
               </div>
 
+              <PmCloseTechState>
               <form
                 className="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3"
                 onSubmit={(ev) => {
@@ -220,6 +227,14 @@ export function QuickCloseForm() {
                       <option value="FAIL">Fail</option>
                     </select>
                   </div>
+                ) : null}
+                {wo.type === "PM" ? (
+                  <PmCloseTechSelect
+                    id={`qc-tech-${wo.id}`}
+                    techs={techs}
+                    compact
+                    className="input w-[11rem] py-1.5 text-sm"
+                  />
                 ) : null}
                 <div>
                   <label className="label" htmlFor={`wp-${wo.id}`}>
@@ -264,14 +279,24 @@ export function QuickCloseForm() {
                     defaultValue={wo.type === "PM" ? "0.5" : "1"}
                   />
                 </div>
-                <button
-                  type="submit"
-                  className="btn-primary"
-                  disabled={closingId === wo.id}
-                >
-                  {closingId === wo.id ? "Closing…" : "Close WO"}
-                </button>
+                {wo.type === "PM" ? (
+                  <PmCloseSubmit
+                    className="btn-primary"
+                    pending={closingId === wo.id}
+                  >
+                    Close WO
+                  </PmCloseSubmit>
+                ) : (
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    disabled={closingId === wo.id}
+                  >
+                    {closingId === wo.id ? "Closing…" : "Close WO"}
+                  </button>
+                )}
               </form>
+              </PmCloseTechState>
             </div>
           ))}
         </div>

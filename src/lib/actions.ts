@@ -59,6 +59,10 @@ import {
 } from "./work-order-delete";
 import { parseDateTimeLocal, workOrderCloseBeforeOpen } from "./utils";
 import {
+  resolvePmCloseTechnician,
+  type PmCloseTech,
+} from "./pm-close";
+import {
   WORK_ORDER_REOPEN_EVENT,
   equipmentPmDatesAfterReopen,
   passClosePmStamp,
@@ -716,11 +720,25 @@ export async function closeWorkOrder(id: string, formData: FormData) {
   let pmResult: string | null = null;
   let pmChecklist: PmChecklistItem[] | undefined;
   let procedureMeta: ReturnType<typeof procedureSnapshot> | null = null;
+  let closeTech: PmCloseTech | null = null;
   if (existing.type === "PM") {
     if (rawPmResult !== "PASS" && rawPmResult !== "FAIL") {
       throw new Error("Pass or Fail is required when closing a PM work order");
     }
     pmResult = rawPmResult;
+    closeTech = await resolvePmCloseTechnician(
+      formData.get("assignedTechId"),
+      (technicianId) =>
+        prisma.user.findFirst({
+          where: {
+            id: technicianId,
+            organizationId,
+            active: true,
+            role: { in: ["TECH", "SUPERVISOR"] },
+          },
+          select: { id: true, techId: true },
+        })
+    );
     const current = normalizePmChecklist(existing.pmChecklist);
     let seeded = current;
     if (current.length === 0) {
@@ -757,6 +775,12 @@ export async function closeWorkOrder(id: string, formData: FormData) {
       workPerformed: String(formData.get("workPerformed") || "") || null,
       comments: String(formData.get("comments") || "") || null,
       closedById: userId,
+      ...(closeTech
+        ? {
+            assignedTechId: closeTech.id,
+            assignedTechCode: closeTech.techId,
+          }
+        : {}),
       pmResult,
       ...(pmChecklist
         ? { pmChecklist: pmChecklist as unknown as Prisma.InputJsonValue }

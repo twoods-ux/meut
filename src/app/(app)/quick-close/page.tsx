@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui";
 import { requireOrgSession } from "@/lib/tenant";
 import { QuickCloseForm } from "@/components/quick-close-form";
@@ -6,7 +7,16 @@ import { QuickCloseForm } from "@/components/quick-close-form";
 export const dynamic = "force-dynamic";
 
 export default async function QuickClosePage() {
-  await requireOrgSession();
+  const { organizationId } = await requireOrgSession();
+  const techs = await prisma.user.findMany({
+    where: {
+      organizationId,
+      active: true,
+      role: { in: ["TECH", "SUPERVISOR"] },
+    },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, techId: true, username: true },
+  });
 
   return (
     <div>
@@ -27,7 +37,7 @@ export default async function QuickClosePage() {
           </div>
         }
       />
-      <QuickCloseForm />
+      <QuickCloseForm techs={techs} />
     </div>
   );
 }
