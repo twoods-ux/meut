@@ -5,7 +5,8 @@ import { loadMatchTemplates } from "@/lib/pm-procedure-store";
 import { checklistForWorkOrder } from "@/lib/pm-procedures";
 import { resolveSearchParams, oneParam } from "@/lib/route-params";
 import { WORK_ORDER_REOPEN_EVENT } from "@/lib/work-order-reopen";
-import { PmWorkOrderPrintDocument } from "@/components/pm-work-order-print";
+import { PmFacilityCompactPacket } from "@/components/pm-facility-compact-fit";
+import { PmFacilityCompactSheet } from "@/components/pm-facility-compact-print";
 import {
   FACILITY_PM_DETAIL_PRINT_LIMIT,
   facilityPmDetailPrintWhere,
@@ -114,7 +115,7 @@ export default async function FacilityPmDetailPrintPage({
         </p>
       </div>
       {truncated ? (
-        <p className="mb-4 text-xs text-slate-600">
+        <p className="mb-4 text-xs text-slate-600 print:hidden">
           First {FACILITY_PM_DETAIL_PRINT_LIMIT} of {total} PM reports for{" "}
           {facility.name}. Narrow the month or dates to print the rest.
         </p>
@@ -124,29 +125,30 @@ export default async function FacilityPmDetailPrintPage({
           No PM work orders for {facility.name} match {rangeLabel(parsed.query)}.
         </p>
       ) : (
-        workOrders.map((wo, index) => {
-          const checklistView = checklistForWorkOrder({
-            status: wo.status,
-            pmChecklist: wo.pmChecklist,
-            pmProc1: wo.pmProc1,
-            equipmentPmProc1: wo.equipment.pmProc1,
-            description: wo.equipment.description,
-            manufacturer: wo.equipment.manufacturer,
-            model: wo.equipment.model,
-            pmTemplateId: wo.equipment.pmTemplateId,
-            templates,
-          });
-          return (
-            <PmWorkOrderPrintDocument
-              key={wo.id}
-              organizationName={org}
-              logoSrc={printLogoSrc}
-              wo={wo}
-              checklistItems={checklistView.items}
-              pageBreakAfter={index < workOrders.length - 1}
-            />
-          );
-        })
+        <PmFacilityCompactPacket>
+          {workOrders.map((wo) => {
+            const checklistView = checklistForWorkOrder({
+              status: wo.status,
+              pmChecklist: wo.pmChecklist,
+              pmProc1: wo.pmProc1,
+              equipmentPmProc1: wo.equipment.pmProc1,
+              description: wo.equipment.description,
+              manufacturer: wo.equipment.manufacturer,
+              model: wo.equipment.model,
+              pmTemplateId: wo.equipment.pmTemplateId,
+              templates,
+            });
+            return (
+              <PmFacilityCompactSheet
+                key={wo.id}
+                organizationName={org}
+                logoSrc={printLogoSrc}
+                wo={wo}
+                checklistItems={checklistView.items}
+              />
+            );
+          })}
+        </PmFacilityCompactPacket>
       )}
     </div>
   );
