@@ -554,6 +554,95 @@ export default async function PmPage({
         </p>
       </form>
 
+      <form
+        method="get"
+        action="/pm-work-orders/print/facility"
+        target="_blank"
+        className="card mb-6 flex flex-wrap items-end gap-3 print:hidden"
+      >
+        <div>
+          <label className="label" htmlFor="facilityPmPrintFacility">
+            Facility
+          </label>
+          <select
+            className="input"
+            id="facilityPmPrintFacility"
+            name="facility"
+            required
+            defaultValue={filters.facilityId || ""}
+          >
+            <option value="" disabled>
+              Select a facility
+            </option>
+            {facilities.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name} ({f.hospId})
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="facilityPmPrintMonth">
+            PM month (YYYY-MM)
+          </label>
+          <input
+            className="input w-40"
+            id="facilityPmPrintMonth"
+            name="month"
+            defaultValue={filters.pmMonth || defaultMonth}
+            pattern="\d{4}-(0[1-9]|1[0-2])"
+            placeholder="YYYY-MM"
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="facilityPmPrintFrom">
+            Opened from
+          </label>
+          <input
+            className="input"
+            id="facilityPmPrintFrom"
+            name="from"
+            type="date"
+            defaultValue={filters.from || ""}
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="facilityPmPrintTo">
+            Opened to
+          </label>
+          <input
+            className="input"
+            id="facilityPmPrintTo"
+            name="to"
+            type="date"
+            defaultValue={filters.to || ""}
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="facilityPmPrintStatus">
+            Status
+          </label>
+          <select
+            className="input"
+            id="facilityPmPrintStatus"
+            name="status"
+            defaultValue="completed"
+          >
+            <option value="completed">Completed</option>
+            <option value="all">All</option>
+          </select>
+        </div>
+        <button type="submit" className="btn-secondary">
+          <Printer className="h-4 w-4" /> Print facility PM reports
+        </button>
+        <p className="w-full text-xs text-slate-500">
+          Prints the full PM report for each work order at the selected facility
+          (steps, readings, logo, watermark, and reopen history), one after another.
+          Choose a month, an opened-date range, or both. At most 200 reports are
+          included; narrow the range if there are more.
+        </p>
+      </form>
+
       <form className="card mb-5 space-y-4 !p-4 print:hidden">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <div className="sm:col-span-2">

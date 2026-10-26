@@ -143,6 +143,19 @@ body {
     box-decoration-break: clone;
   }
 
+  .print-break-after {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  /*
+   * A packet prints several reports in a row. The first report's fixed
+   * watermark already repeats on every page; later copies would stack.
+   */
+  .print-document ~ .print-document .print-watermark {
+    display: none !important;
+  }
+
   a {
     text-decoration: none !important;
     color: inherit !important;
