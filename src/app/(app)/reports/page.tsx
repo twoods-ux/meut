@@ -18,6 +18,8 @@ import {
   FilePlus,
   Printer,
 } from "lucide-react";
+import { FacilityPmPrintCard } from "@/components/facility-pm-print-card";
+import { currentPmMonth } from "@/lib/pm-generate";
 
 export const dynamic = "force-dynamic";
 
@@ -151,6 +153,16 @@ export default async function ReportsPage({
           techName={techName}
         />
       ) : null}
+
+      <FacilityPmPrintCard
+        facilities={formOptions.facilities}
+        defaultFacilityId={filters.facilityId || ""}
+        defaultMonth={currentPmMonth()}
+        defaultFrom={filters.from || ""}
+        defaultTo={filters.to || ""}
+        idPrefix="reportsFacilityPm"
+        className="mt-8"
+      />
 
       <div className="mt-10 mb-3">
         <h2 className="text-lg font-semibold">Shortcuts</h2>
