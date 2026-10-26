@@ -33,7 +33,18 @@ import {
   parseDateInput,
   type PmChecklistItem,
 } from "./pm";
-import { resolvePmProcedure, type ResolvedPmProcedure } from "./pm-procedures";
+import {
+  resolvePmProcedure,
+  type PmTemplateForMatch,
+} from "./pm-procedures";
+import {
+  buildScheduledPmWorkOrderData,
+  currentPmMonth,
+  parsePmMonth,
+  procedureSnapshot,
+  scheduledPmDuplicateWhere,
+  type ScheduledPmEquipment,
+} from "./pm-generate";
 import {
   ensureStarterPmProcedures,
   loadMatchTemplates,
@@ -48,22 +59,6 @@ import {
   validateReopenRequest,
   reopenWorkOrderData,
 } from "./work-order-reopen";
-
-function procedureSnapshot(resolved: ResolvedPmProcedure): {
-  pmChecklist: Prisma.InputJsonValue;
-  pmProcedureSource: string;
-  pmTemplateId: string | null;
-  pmTemplateName: string | null;
-  pmTemplateVersion: number | null;
-} {
-  return {
-    pmChecklist: resolved.items as unknown as Prisma.InputJsonValue,
-    pmProcedureSource: resolved.source,
-    pmTemplateId: resolved.templateId,
-    pmTemplateName: resolved.templateName,
-    pmTemplateVersion: resolved.templateVersion,
-  };
-}
 
 /** Blank or omitted uses now. A present but invalid value is rejected. */
 function submittedDateTime(formData: FormData, name: string, label: string): Date {
@@ -1153,10 +1148,167 @@ export async function deleteOpenWorkOrder(
   }
 }
 
+/**
+ * Create one scheduled PM when this equipment does not already have one for
+ * the month. Bulk generate and the single-equipment action both use this.
+ */
+async function createScheduledPmWorkOrder(input: {
+  organizationId: string;
+  userId: string;
+  equipment: ScheduledPmEquipment;
+  month: string;
+  dateOpened: Date;
+  templates: PmTemplateForMatch[];
+}): Promise<
+  | { created: true; id: string; woNumber: number }
+  | {
+      created: false;
+      existing: { id: string; woNumber: number; pmMonth: string | null };
+    }
+> {
+  const existing = await prisma.workOrder.findFirst({
+    where: scheduledPmDuplicateWhere(
+      input.organizationId,
+      input.equipment.id,
+      input.month
+    ),
+    select: { id: true, woNumber: true, pmMonth: true },
+    orderBy: { woNumber: "desc" },
+  });
+  if (existing) return { created: false, existing };
+
+  let assignedTechId: string | null = null;
+  if (input.equipment.techAssigned1) {
+    const tech = await prisma.user.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        techId: input.equipment.techAssigned1,
+      },
+      select: { id: true },
+    });
+    assignedTechId = tech?.id ?? null;
+  }
+  const resolved = resolvePmProcedure(
+    {
+      pmProc1: input.equipment.pmProc1,
+      description: input.equipment.description,
+      manufacturer: input.equipment.manufacturer,
+      model: input.equipment.model,
+      pmTemplateId: input.equipment.pmTemplateId,
+    },
+    input.templates
+  );
+  const woNumber = await nextWoNumber(input.organizationId);
+  const wo = await prisma.workOrder.create({
+    data: buildScheduledPmWorkOrderData({
+      organizationId: input.organizationId,
+      woNumber,
+      equipment: input.equipment,
+      month: input.month,
+      dateOpened: input.dateOpened,
+      openedById: input.userId,
+      assignedTechId,
+      resolved,
+    }),
+  });
+  return { created: true, id: wo.id, woNumber: wo.woNumber };
+}
+
+export type GenerateEquipmentPmResult =
+  | {
+      ok: true;
+      id: string;
+      woNumber: number;
+      pmMonth: string;
+      controlNum: string;
+    }
+  | {
+      ok: false;
+      duplicate: true;
+      id: string;
+      woNumber: number;
+      pmMonth: string;
+      controlNum: string;
+    }
+  | { ok: false; error: string };
+
+/**
+ * Staff-only: one PM work order for one piece of equipment in this org.
+ * Month defaults to the current month. Opened date defaults to now.
+ * A PM already on file for that month is returned instead of creating another.
+ */
+export async function generateEquipmentPmWorkOrder(
+  formData: FormData
+): Promise<GenerateEquipmentPmResult> {
+  try {
+    const { organizationId, userId } = await requireStaffSession();
+    const equipmentId = String(formData.get("equipmentId") || "").trim();
+    if (!equipmentId) return { ok: false, error: "Equipment is required" };
+
+    const monthRaw = String(formData.get("month") || "").trim();
+    const month = parsePmMonth(monthRaw || currentPmMonth());
+    if (!month) return { ok: false, error: "Month must be YYYY-MM" };
+
+    let dateOpened: Date;
+    try {
+      dateOpened = submittedDateTime(formData, "dateOpened", "Opened date");
+    } catch (error) {
+      return {
+        ok: false,
+        error: actionErrorMessage(error, "Opened date is not a valid date and time"),
+      };
+    }
+
+    const equipment = await prisma.equipment.findFirst({
+      where: { id: equipmentId, organizationId },
+    });
+    if (!equipment) return { ok: false, error: "Equipment not found" };
+
+    const templates = await loadMatchTemplates(prisma, organizationId);
+    const outcome = await createScheduledPmWorkOrder({
+      organizationId,
+      userId,
+      equipment,
+      month,
+      dateOpened,
+      templates,
+    });
+
+    if (!outcome.created) {
+      return {
+        ok: false,
+        duplicate: true,
+        id: outcome.existing.id,
+        woNumber: outcome.existing.woNumber,
+        pmMonth: outcome.existing.pmMonth || month,
+        controlNum: equipment.controlNum,
+      };
+    }
+
+    revalidatePath("/pm-work-orders");
+    revalidatePath(`/pm-work-orders/${outcome.id}`);
+    revalidatePath("/dashboard");
+    revalidatePath("/equipment");
+    revalidatePath(`/equipment/${equipment.id}`);
+    return {
+      ok: true,
+      id: outcome.id,
+      woNumber: outcome.woNumber,
+      pmMonth: month,
+      controlNum: equipment.controlNum,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: actionErrorMessage(error, "Could not generate PM work order"),
+    };
+  }
+}
+
 export async function generatePmWorkOrders(formData: FormData) {
   const { organizationId, userId } = await requireStaffSession();
-  const month = String(formData.get("month") || "").trim(); // YYYY-MM
-  if (!/^\d{4}-\d{2}$/.test(month)) throw new Error("month must be YYYY-MM");
+  const month = parsePmMonth(formData.get("month"));
+  if (!month) throw new Error("month must be YYYY-MM");
   const dateOpened = submittedDateTime(formData, "dateOpened", "Opened date");
 
   // Accept both names so callers can use the same facility value as the list
@@ -1189,61 +1341,15 @@ export async function generatePmWorkOrders(formData: FormData) {
   const templates = await loadMatchTemplates(prisma, organizationId);
   let created = 0;
   for (const eq of equipment) {
-    const existing = await prisma.workOrder.findFirst({
-      where: {
-        organizationId,
-        equipmentId: eq.id,
-        type: "PM",
-        pmMonth: month,
-        status: { not: "CANCELLED" },
-      },
+    const outcome = await createScheduledPmWorkOrder({
+      organizationId,
+      userId,
+      equipment: eq,
+      month,
+      dateOpened,
+      templates,
     });
-    if (existing) continue;
-    const woNumber = await nextWoNumber(organizationId);
-    let assignedTechId: string | null = null;
-    if (eq.techAssigned1) {
-      const u = await prisma.user.findFirst({
-        where: { organizationId, techId: eq.techAssigned1 },
-      });
-      assignedTechId = u?.id ?? null;
-    }
-    const resolved = resolvePmProcedure(
-      {
-        pmProc1: eq.pmProc1,
-        description: eq.description,
-        manufacturer: eq.manufacturer,
-        model: eq.model,
-        pmTemplateId: eq.pmTemplateId,
-      },
-      templates
-    );
-    const snapshot = procedureSnapshot(resolved);
-    await prisma.workOrder.create({
-      data: {
-        organizationId,
-        woNumber,
-        type: "PM",
-        status: "OPEN",
-        equipmentId: eq.id,
-        controlNum: eq.controlNum,
-        hospId: eq.hospId,
-        costCtr: eq.costCtr,
-        workRequested: `Scheduled PM for ${month}`,
-        pmMonth: month,
-        pmProc1: eq.pmProc1,
-        pmSchedule1: eq.pmSchedule1,
-        pmChecklist: snapshot.pmChecklist,
-        pmProcedureSource: snapshot.pmProcedureSource,
-        pmTemplateId: snapshot.pmTemplateId,
-        pmTemplateName: snapshot.pmTemplateName,
-        pmTemplateVersion: snapshot.pmTemplateVersion,
-        assignedTechCode: eq.techAssigned1,
-        assignedTechId,
-        openedById: userId,
-        dateOpened,
-      },
-    });
-    created++;
+    if (outcome.created) created++;
   }
   revalidatePath("/pm-work-orders");
   revalidatePath("/dashboard");
