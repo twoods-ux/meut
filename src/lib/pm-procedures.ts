@@ -15,6 +15,7 @@
 import {
   buildPmChecklist,
   emptyChecklistFields,
+  GENERIC_PM_STEP_TEXT,
   normalizePmChecklist,
   parseStepType,
   type PmChecklistItem,
@@ -297,7 +298,26 @@ export function resolvePmProcedure(
 }
 
 /**
- * Saved checklist JSON wins. Open work orders with no snapshot resolve live
+ * True when a saved checklist is only the untouched generic fallback step
+ * (no library template, no result, reading, or note recorded).
+ */
+export function isGenericOnlyChecklist(items: PmChecklistItem[]): boolean {
+  if (items.length !== 1) return false;
+  const item = items[0];
+  return (
+    item.text.trim() === GENERIC_PM_STEP_TEXT &&
+    !item.templateId &&
+    !item.done &&
+    item.result == null &&
+    item.reading == null &&
+    !String(item.note || "").trim()
+  );
+}
+
+/**
+ * Saved checklist JSON wins, except an OPEN work order whose saved checklist
+ * is only the untouched generic step: that one re-resolves from the library
+ * so a procedure added or pinned later shows up. Open work orders with no snapshot resolve live
  * (custom text, then library, then the generic step). Closed work orders with
  * no snapshot stay on the text procedure so old records do not gain steps
  * that were not performed.
@@ -319,6 +339,21 @@ export function checklistForWorkOrder(opts: {
 } {
   const existing = normalizePmChecklist(opts.pmChecklist);
   if (existing.length > 0) {
+    if (opts.status === "OPEN" && isGenericOnlyChecklist(existing)) {
+      const resolved = resolvePmProcedure(
+        {
+          pmProc1: opts.pmProc1 || opts.equipmentPmProc1,
+          description: opts.description,
+          manufacturer: opts.manufacturer,
+          model: opts.model,
+          pmTemplateId: opts.pmTemplateId,
+        },
+        opts.templates
+      );
+      if (resolved.source !== "GENERIC") {
+        return { items: resolved.items, resolved, fromSnapshot: false };
+      }
+    }
     return { items: existing, resolved: null, fromSnapshot: true };
   }
   if (opts.status !== "OPEN") {

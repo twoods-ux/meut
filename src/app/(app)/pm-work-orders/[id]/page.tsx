@@ -7,6 +7,7 @@ import {
   savePmChecklist,
   deleteOpenWorkOrder,
   reopenWorkOrder,
+  refreshPmProcedure,
 } from "@/lib/actions";
 import { formatDate, toDateTimeLocalValue } from "@/lib/utils";
 import { redirect } from "next/navigation";
@@ -53,6 +54,8 @@ export default async function PmDetailPage({
   const reopenError = (oneParam(rawSp.reopenError) || "").trim().slice(0, 300);
   const savedDates = oneParam(rawSp.saved) === "dates";
   const reopened = oneParam(rawSp.reopened) === "1";
+  const refreshed = oneParam(rawSp.refreshed) === "1";
+  const refreshError = (oneParam(rawSp.refreshError) || "").trim().slice(0, 300);
   const { organizationId, role } = await requireOrgSession();
   const wo = await prisma.workOrder.findFirst({
     where: { id: routeId, organizationId, type: "PM" },
@@ -126,6 +129,20 @@ export default async function PmDetailPage({
       );
     }
     redirect(`/pm-work-orders/${routeId}`);
+  }
+
+  async function refreshProcedureAction() {
+    "use server";
+    try {
+      await refreshPmProcedure(routeId);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Could not refresh procedure";
+      redirect(
+        `/pm-work-orders/${routeId}?refreshError=${encodeURIComponent(message.slice(0, 300))}`
+      );
+    }
+    redirect(`/pm-work-orders/${routeId}?refreshed=1`);
   }
 
   async function reopenAction(formData: FormData) {
@@ -300,6 +317,31 @@ export default async function PmDetailPage({
           {wo.workRequested || "—"}
         </p>
       </div>
+
+      {wo.status === "OPEN" ? (
+        <form
+          action={refreshProcedureAction}
+          className="card max-w-3xl flex flex-wrap items-center justify-between gap-3 text-sm"
+        >
+          <div>
+            <p className="font-medium">PM procedure</p>
+            <p className="text-xs text-slate-500">
+              Reload the steps from the equipment&apos;s current procedure or
+              library template. Step results already entered on this work order
+              are cleared.
+            </p>
+            {refreshed ? (
+              <p className="mt-1 text-xs text-emerald-700">Procedure refreshed.</p>
+            ) : null}
+            {refreshError ? (
+              <p className="mt-1 text-xs text-red-600">{refreshError}</p>
+            ) : null}
+          </div>
+          <button type="submit" className="btn-secondary">
+            Refresh procedure
+          </button>
+        </form>
+      ) : null}
 
       {wo.status === "OPEN" ? (
         <PmCloseTechState>
