@@ -34,6 +34,7 @@ import {
   type PmChecklistItem,
 } from "./pm";
 import {
+  isGenericOnlyChecklist,
   resolvePmProcedure,
   type PmTemplateForMatch,
 } from "./pm-procedures";
@@ -741,7 +742,7 @@ export async function closeWorkOrder(id: string, formData: FormData) {
     );
     const current = normalizePmChecklist(existing.pmChecklist);
     let seeded = current;
-    if (current.length === 0) {
+    if (current.length === 0 || isGenericOnlyChecklist(current)) {
       const templates = await loadMatchTemplates(prisma, organizationId);
       const resolved = resolvePmProcedure(
         {
@@ -753,8 +754,10 @@ export async function closeWorkOrder(id: string, formData: FormData) {
         },
         templates
       );
-      seeded = resolved.items;
-      procedureMeta = procedureSnapshot(resolved);
+      if (current.length === 0 || resolved.source !== "GENERIC") {
+        seeded = resolved.items;
+        procedureMeta = procedureSnapshot(resolved);
+      }
     }
     pmChecklist = checklistFromFormData(formData, seeded);
     const missing = missingRequiredPmSteps(pmChecklist);
@@ -1086,7 +1089,7 @@ export async function savePmChecklist(id: string, formData: FormData) {
   const current = normalizePmChecklist(existing.pmChecklist);
   let seeded = current;
   let procedureMeta: ReturnType<typeof procedureSnapshot> | null = null;
-  if (current.length === 0) {
+  if (current.length === 0 || isGenericOnlyChecklist(current)) {
     const templates = await loadMatchTemplates(prisma, organizationId);
     const resolved = resolvePmProcedure(
       {
@@ -1098,8 +1101,10 @@ export async function savePmChecklist(id: string, formData: FormData) {
       },
       templates
     );
-    seeded = resolved.items;
-    procedureMeta = procedureSnapshot(resolved);
+    if (current.length === 0 || resolved.source !== "GENERIC") {
+      seeded = resolved.items;
+      procedureMeta = procedureSnapshot(resolved);
+    }
   }
   const pmChecklist = checklistFromFormData(formData, seeded);
   await prisma.workOrder.update({
@@ -1119,6 +1124,49 @@ export async function savePmChecklist(id: string, formData: FormData) {
   revalidatePath(`/pm-work-orders/${id}`);
   revalidatePath(`/pm-work-orders/${id}/print`);
   revalidatePath("/pm-work-orders");
+}
+
+/**
+ * Re-snapshot an OPEN PM work order's checklist from the equipment's current
+ * procedure (custom text, pinned template, best library match, generic step).
+ * Discards any step results already recorded on the open work order.
+ */
+export async function refreshPmProcedure(id: string) {
+  const { organizationId } = await requireStaffSession();
+  const existing = await prisma.workOrder.findFirst({
+    where: { id, organizationId, type: "PM" },
+    include: { equipment: true },
+  });
+  if (!existing) throw new Error("PM work order not found");
+  if (existing.status !== "OPEN") {
+    throw new Error("Only open PM work orders can refresh their procedure");
+  }
+  const templates = await loadMatchTemplates(prisma, organizationId);
+  const resolved = resolvePmProcedure(
+    {
+      pmProc1: existing.pmProc1 || existing.equipment.pmProc1,
+      description: existing.equipment.description,
+      manufacturer: existing.equipment.manufacturer,
+      model: existing.equipment.model,
+      pmTemplateId: existing.equipment.pmTemplateId,
+    },
+    templates
+  );
+  const snapshot = procedureSnapshot(resolved);
+  await prisma.workOrder.update({
+    where: { id },
+    data: {
+      pmChecklist: snapshot.pmChecklist,
+      pmProcedureSource: snapshot.pmProcedureSource,
+      pmTemplateId: snapshot.pmTemplateId,
+      pmTemplateName: snapshot.pmTemplateName,
+      pmTemplateVersion: snapshot.pmTemplateVersion,
+    },
+  });
+  revalidatePath(`/pm-work-orders/${id}`);
+  revalidatePath(`/pm-work-orders/${id}/print`);
+  revalidatePath("/pm-work-orders");
+  return { source: resolved.source, templateName: resolved.templateName };
 }
 
 /**

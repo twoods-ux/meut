@@ -3,10 +3,12 @@ import { describe, it } from "node:test";
 import { STARTER_PM_PROCEDURES } from "./pm-procedure-catalog";
 import {
   bestPmTemplate,
+  checklistForWorkOrder,
+  isGenericOnlyChecklist,
   resolvePmProcedure,
   type PmTemplateForMatch,
 } from "./pm-procedures";
-import { GENERIC_PM_STEP_TEXT } from "./pm";
+import { GENERIC_PM_STEP_TEXT, buildPmChecklist } from "./pm";
 
 function template(
   partial: Partial<PmTemplateForMatch> & Pick<PmTemplateForMatch, "id">
@@ -185,6 +187,7 @@ describe("starter catalog", () => {
       "ecg",
       "electrosurgical-unit",
       "suction",
+      "tosoh-g8-hba1c",
       "electrical-safety",
     ]);
     assert.equal(new Set(keys).size, keys.length);
@@ -197,5 +200,89 @@ describe("starter catalog", () => {
         assert.ok(row.deviceType.trim().length > 0);
       }
     }
+  });
+});
+
+describe("generic-only open PM re-resolves", () => {
+  const g8 = template({
+    id: "g8",
+    name: "Tosoh G8 HbA1c analyzer",
+    deviceType: "HbA1c analyzer",
+    aliases: "A1c analyzer, G8, HLC-723G8, Tosoh G8",
+    manufacturer: "Tosoh",
+    model: "HLC-723G8",
+  });
+  const equipment = {
+    description: "HbA1c analyzer",
+    manufacturer: "Tosoh Bioscience",
+    model: "HLC-723G8",
+  };
+
+  it("detects an untouched generic snapshot", () => {
+    const generic = buildPmChecklist(null);
+    assert.equal(isGenericOnlyChecklist(generic), true);
+    assert.equal(
+      isGenericOnlyChecklist([{ ...generic[0], result: "PASS", done: true }]),
+      false
+    );
+  });
+
+  it("shows the library procedure on an OPEN WO saved with the generic step", () => {
+    const view = checklistForWorkOrder({
+      status: "OPEN",
+      pmChecklist: buildPmChecklist(null),
+      ...equipment,
+      templates: [g8],
+    });
+    assert.equal(view.fromSnapshot, false);
+    assert.equal(view.resolved?.templateId, "g8");
+  });
+
+  it("uses a pinned template even when match text differs", () => {
+    const view = checklistForWorkOrder({
+      status: "OPEN",
+      pmChecklist: buildPmChecklist(null),
+      description: "Glycohemoglobin",
+      manufacturer: "",
+      model: "G8",
+      pmTemplateId: "g8",
+      templates: [g8],
+    });
+    assert.equal(view.resolved?.reason, "pinned");
+  });
+
+  it("keeps closed and answered snapshots unchanged", () => {
+    const closed = checklistForWorkOrder({
+      status: "CLOSED",
+      pmChecklist: buildPmChecklist(null),
+      ...equipment,
+      templates: [g8],
+    });
+    assert.equal(closed.fromSnapshot, true);
+    const generic = buildPmChecklist(null);
+    const answered = checklistForWorkOrder({
+      status: "OPEN",
+      pmChecklist: [{ ...generic[0], result: "PASS", done: true }],
+      ...equipment,
+      templates: [g8],
+    });
+    assert.equal(answered.fromSnapshot, true);
+  });
+
+  it("starter G8 template matches a typical G8 record", () => {
+    const starter = STARTER_PM_PROCEDURES.find((row) => row.seedKey === "tosoh-g8-hba1c");
+    assert.ok(starter);
+    const t = template({
+      id: "starter-g8",
+      deviceType: starter.deviceType,
+      aliases: starter.aliases,
+      manufacturer: starter.manufacturer,
+      model: starter.model,
+    });
+    const match = bestPmTemplate(
+      { description: "Tosoh G8 HbA1c analyzer", manufacturer: "TOSOH", model: "HLC-723G8" },
+      [t]
+    );
+    assert.equal(match?.template.id, "starter-g8");
   });
 });
